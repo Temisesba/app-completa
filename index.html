@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#f2f2f7">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- App Completa — v3 (Fase 3: Mapa de lugares, categorías editables) — GAS v3 -->
+<!-- App Completa — v4 (Fase 4: IA unificada Gemini/Claude) — GAS v4 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -216,6 +216,30 @@ textarea.field{resize:vertical; min-height:70px;}
 #leaflet-map{height:280px; border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow); margin-bottom:14px; background:var(--separator-op);}
 .leaflet-popup-content-wrapper{background:var(--bg-elev); color:var(--text); border-radius:var(--radius-sm);}
 .leaflet-popup-tip{background:var(--bg-elev);}
+
+/* ---------- Chat IA ---------- */
+.msg-row{display:flex; flex-direction:column;}
+.msg-row.user{align-items:flex-end;}
+.msg-row.ia{align-items:flex-start;}
+.msg{max-width:84%; padding:11px 15px; border-radius:18px; font-size:15px; line-height:1.42; position:relative; white-space:pre-wrap;}
+.msg-row.user .msg{background:var(--accent); color:#fff; border-bottom-right-radius:5px;}
+.msg-row.ia .msg{background:var(--bg-elev); box-shadow:var(--shadow); border-bottom-left-radius:5px;}
+.msg.destacado{box-shadow:0 0 0 2px var(--yellow);}
+.msg img{max-width:100%; border-radius:10px; margin-bottom:6px; display:block;}
+.msg-meta{display:flex; align-items:center; gap:6px; margin-top:4px; font-size:11px; color:var(--text-faint);}
+.msg-star{background:none; border:none; cursor:pointer; font-size:14px; color:var(--text-faint); padding:2px;}
+.msg-star.on{color:var(--yellow);}
+.sugerencia-card{background:var(--bg-elev); box-shadow:var(--shadow); border-radius:var(--radius-md); padding:12px; margin-top:8px; max-width:84%;}
+.sugerencia-card.hecha{opacity:.55;}
+.sugerencia-card .campo{font-size:13px; color:var(--text-soft); margin:2px 0;}
+#ia-compose-bar{
+  position:fixed; left:0; right:0; bottom:0; z-index:25; background:var(--bg-elev);
+  border-top:1px solid var(--separator-op); padding:8px 12px calc(8px + var(--safe-b));
+}
+#ia-foto-preview{padding:6px 0;}
+#ia-foto-preview img{height:64px; border-radius:8px;}
+@media (min-width:900px){ #ia-compose-bar{left:260px;} }
+body.chat-abierto .tabbar{display:none;}
 </style>
 </head>
 <body>
@@ -301,6 +325,22 @@ textarea.field{resize:vertical; min-height:70px;}
         <div class="grouped" id="lugares-list"></div>
       </section>
 
+      <!-- ---------- IA ---------- -->
+      <section class="view" id="view-ia">
+        <div id="ia-lista-chats">
+          <div class="section-title t-caption">Chats con la IA</div>
+          <button class="btn btn-primary" id="btn-ia-nuevo-chat" style="margin-bottom:14px;">+ Nuevo chat</button>
+          <div class="grouped" id="ia-chats-list"></div>
+        </div>
+        <div id="ia-chat-detalle" class="hidden">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+            <button class="icon-btn" id="btn-ia-volver">←</button>
+            <span class="t-headline" id="ia-chat-titulo" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Chat nuevo</span>
+          </div>
+          <div id="ia-mensajes" style="display:flex; flex-direction:column; gap:10px; padding-bottom:110px;"></div>
+        </div>
+      </section>
+
       <!-- ---------- CONFIGURACIÓN ---------- -->
       <section class="view" id="view-config">
         <div class="section-title t-caption">Versión</div>
@@ -355,6 +395,17 @@ textarea.field{resize:vertical; min-height:70px;}
 
     <!-- ---------- TAB BAR (móvil) ---------- -->
     <nav class="tabbar" id="tabbar"></nav>
+
+    <!-- ---------- Barra de composición del chat IA ---------- -->
+    <div id="ia-compose-bar" class="hidden">
+      <div id="ia-foto-preview" class="hidden"></div>
+      <div style="display:flex; gap:8px; align-items:flex-end;">
+        <button class="icon-btn" id="btn-ia-foto" style="width:40px; height:40px; flex-shrink:0;">📷</button>
+        <textarea id="ia-input" class="field" style="margin:0; flex:1; max-height:100px; resize:none;" placeholder="Escribe o manda una foto…" rows="1"></textarea>
+        <button class="btn btn-primary btn-sm" id="btn-ia-enviar" style="width:44px; flex-shrink:0;">➤</button>
+      </div>
+    </div>
+    <input type="file" id="ia-file-input" accept="image/*" class="hidden">
   </div>
 </div>
 
@@ -515,7 +566,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Tres — mapa de lugares y categorías editables';
+const VERSION_TXT = 'Cuatro — IA que sugiere a qué módulo va cada mensaje o foto';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -536,7 +587,8 @@ let state = {
   usuarios: [], usuarioActivo: null, conexiones: {}, gasUrlPropia:'',
   mejoras: [], inventario: [], categoriasInventario: [], vista:'hoy',
   horario: [], tareas: [], registros: [],
-  lugares: [], categoriasLugares: [], filtroLugar: 'todos'
+  lugares: [], categoriasLugares: [], filtroLugar: 'todos',
+  iaChats: [], chatActivo: null, iaImagenPendiente: null
 };
 let mapaLeaflet = null, mapaMarkersLayer = null;
 
@@ -822,6 +874,7 @@ const NAV_ITEMS = [
   { id:'app:ropa', icon:'👕', label:'Closet', tab:false, externo:true },
   { id:'inventario', icon:'📦', label:'Inventario', tab:false },
   { id:'mapa', icon:'🗺️', label:'Mapa', tab:false },
+  { id:'ia', icon:'💬', label:'IA', tab:false },
   { id:'app:acuerdos', icon:'🤝', label:'Acuerdos', tab:false, externo:true },
   { id:'app:notas', icon:'✎', label:'Notas', tab:false, externo:true },
   { id:'config', icon:'⚙️', label:'Config', tab:false },
@@ -881,18 +934,20 @@ function construirNav(){
 function irAVista(id){
   state.vista = id;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
-  const map = { hoy:'view-hoy', mas:'view-mas', inventario:'view-inventario', mapa:'view-mapa', config:'view-config' };
+  const map = { hoy:'view-hoy', mas:'view-mas', inventario:'view-inventario', mapa:'view-mapa', ia:'view-ia', config:'view-config' };
   const target = document.getElementById(map[id] || 'view-hoy');
   target.classList.add('on');
   document.querySelectorAll('.nav-item, .tab-item').forEach(b=>{
     b.classList.toggle('active', b.dataset.navId === id || (id==='mas' && b.dataset.navId==='mas'));
   });
-  const titulos = { hoy:'Hoy', mas:'Más', inventario:'Inventario general', mapa:'Mapa', config:'Configuración' };
+  const titulos = { hoy:'Hoy', mas:'Más', inventario:'Inventario general', mapa:'Mapa', ia:'IA', config:'Configuración' };
   document.getElementById('topbar-title').textContent = titulos[id] || 'Hoy';
   document.getElementById('views').scrollTop = 0;
+  if(id!=='ia'){ cerrarChatIA(); }
   if(id==='config'){ pintarConfigTodo(); }
   if(id==='inventario'){ pintarInventario(); }
   if(id==='mapa'){ pintarMapa(); }
+  if(id==='ia'){ pintarIAListaChats(); }
 }
 
 /* ============================================================
@@ -906,6 +961,7 @@ const QUICK_ACTIONS = [
   { id:'notas', label:'Nota', emoji:'✎', color:'var(--notas)', tipo:'app' },
   { id:'tarea', label:'Tarea', emoji:'📝', color:'var(--general)', tipo:'tarea' },
   { id:'registro', label:'Sueño/tiempo', emoji:'⏱️', color:'var(--acuerdos)', tipo:'registro' },
+  { id:'ia', label:'Preguntar a la IA', emoji:'💬', color:'var(--general)', tipo:'ia' },
 ];
 function pintarQuickActions(){
   const cont = document.getElementById('quick-actions');
@@ -920,6 +976,7 @@ function pintarQuickActions(){
     if(a.tipo==='app') irApp(a.id);
     else if(a.tipo==='tarea') abrirModalTarea(null);
     else if(a.tipo==='registro') abrirModalRegistro(null);
+    else if(a.tipo==='ia'){ irAVista('ia'); nuevoChatIA(); }
   }));
 
   const nav = document.getElementById('home-apps-nav');
@@ -1583,6 +1640,240 @@ document.getElementById('lug-guardar').addEventListener('click', async function(
   } catch(e){ toast('Error: '+e.message); }
   setBtnState(btn, 'idle', {idle:'Guardar'});
 });
+
+/* ============================================================
+   7.6 IA UNIFICADA (Fase 4) — Gemini primero, Claude de respaldo (con
+   permiso explícito antes de usarlo, porque Claude es de paga — mismo
+   comportamiento que ya tiene la app de Gastos).
+   ============================================================ */
+async function pintarIAListaChats(){
+  document.getElementById('ia-lista-chats').classList.remove('hidden');
+  document.getElementById('ia-chat-detalle').classList.add('hidden');
+  document.getElementById('ia-compose-bar').classList.add('hidden');
+  document.body.classList.remove('chat-abierto');
+  const cont = document.getElementById('ia-chats-list');
+  if(!state.gasUrlPropia){ cont.innerHTML = '<div class="empty-row">Configura tu Web App propia en Configuración → Conexiones</div>'; return; }
+  cont.innerHTML = '<div class="empty-row">Cargando…</div>';
+  try{
+    const data = await asegurarBackendPropio('getAll');
+    state.iaChats = (data.data.ia_chats || []).filter(c=>!esVerdadero(c.Papelera)).sort((a,b)=>(b.FechaAlta||'').localeCompare(a.FechaAlta||''));
+    renderListaChatsIA();
+  } catch(e){ cont.innerHTML = `<div class="empty-row">No se pudo cargar: ${escapeHtml(e.message)}</div>`; }
+}
+function renderListaChatsIA(){
+  const cont = document.getElementById('ia-chats-list');
+  if(!state.iaChats.length){ cont.innerHTML = '<div class="empty-row">Sin chats todavía — manda tu primer mensaje o foto</div>'; return; }
+  cont.innerHTML = state.iaChats.map(c=>{
+    let mensajes = []; try{ mensajes = JSON.parse(c.Mensajes||'[]'); }catch(e){}
+    const ultimo = mensajes.length ? mensajes[mensajes.length-1].content : '';
+    return `<div class="row" data-id="${c.ID}">
+      <div class="ic" style="background:var(--general);">💬</div>
+      <div class="body"><div class="main">${escapeHtml(c.Titulo||'Chat')}</div><div class="sub">${escapeHtml((ultimo||'').slice(0,60))}</div></div>
+      <button class="icon-btn" data-del="${c.ID}">🗑</button>
+    </div>`;
+  }).join('');
+  cont.querySelectorAll('.row[data-id]').forEach(r=> r.addEventListener('click', (e)=>{ if(e.target.closest('[data-del]')) return; abrirChatIA(r.dataset.id); }));
+  cont.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const c = state.iaChats.find(x=>x.ID===b.dataset.del);
+    pedirConfirmacion('¿Eliminar este chat?', c.Titulo||'', async ()=>{
+      c.Papelera = true;
+      await asegurarBackendPropio('saveRow', { table:'IA_CHATS', row:c });
+      toast('Eliminado');
+      pintarIAListaChats();
+    });
+  }));
+}
+document.getElementById('btn-ia-nuevo-chat').addEventListener('click', ()=> nuevoChatIA());
+function nuevoChatIA(){
+  state.chatActivo = { ID:null, Titulo:'Chat nuevo', mensajes:[] };
+  abrirChatUI();
+}
+function abrirChatIA(idv){
+  const c = state.iaChats.find(x=>x.ID===idv);
+  let mensajes = []; try{ mensajes = JSON.parse(c.Mensajes||'[]'); }catch(e){}
+  state.chatActivo = { ID:c.ID, Titulo:c.Titulo, mensajes };
+  abrirChatUI();
+}
+function abrirChatUI(){
+  document.getElementById('ia-lista-chats').classList.add('hidden');
+  document.getElementById('ia-chat-detalle').classList.remove('hidden');
+  document.getElementById('ia-compose-bar').classList.remove('hidden');
+  document.body.classList.add('chat-abierto');
+  document.getElementById('ia-chat-titulo').textContent = state.chatActivo.Titulo;
+  pushHistory('chat-ia');
+  renderMensajesIA();
+}
+function cerrarChatIA(){
+  if(!state.chatActivo) return;
+  state.chatActivo = null;
+  document.getElementById('ia-lista-chats').classList.remove('hidden');
+  document.getElementById('ia-chat-detalle').classList.add('hidden');
+  document.getElementById('ia-compose-bar').classList.add('hidden');
+  document.body.classList.remove('chat-abierto');
+}
+document.getElementById('btn-ia-volver').addEventListener('click', ()=>{ cerrarChatIA(); pintarIAListaChats(); });
+
+const SUGERENCIA_LABELS = {
+  nota:'Nota', acuerdo:'Acuerdo', lista_compras:'Lista de compras',
+  inventario_general:'Inventario general', gasto:'Gasto'
+};
+function renderMensajesIA(){
+  const cont = document.getElementById('ia-mensajes');
+  cont.innerHTML = state.chatActivo.mensajes.map((m,i)=>{
+    const esUser = m.role==='user';
+    let html = `<div class="msg-row ${esUser?'user':'ia'}">`;
+    html += `<div class="msg ${m.destacado?'destacado':''}" data-idx="${i}">`;
+    if(m.imagenUrl) html += `<img src="${m.imagenUrl}">`;
+    if(m.pensando) html += `<span class="t-sub">Pensando…</span>`;
+    else html += escapeHtml(m.content||'');
+    html += `</div>`;
+    if(!m.pensando){
+      html += `<div class="msg-meta">`;
+      if(!esUser && m.usedModel) html += `<span>✨ ${m.usedModel==='gemini'?'Gemini':'Claude'}</span>`;
+      html += `<button class="msg-star ${m.destacado?'on':''}" data-star="${i}">${m.destacado?'★':'☆'}</button>`;
+      html += `</div>`;
+    }
+    if(m.error){
+      html += `<div class="sugerencia-card"><p class="t-sub">⚠️ ${escapeHtml(m.error)}</p>
+        <div class="modal-actions"><button class="btn btn-secondary btn-sm" data-reintentar="${i}">Reintentar con Gemini</button><button class="btn btn-primary btn-sm" data-claude="${i}">Usar Claude</button></div></div>`;
+    }
+    if(m.sugerencias && m.sugerencias.length){
+      m.sugerencias.forEach((s,si)=>{
+        html += `<div class="sugerencia-card ${s.hecha?'hecha':''}">
+          <div class="t-headline">${SUGERENCIA_LABELS[s.modulo]||s.modulo} <span class="t-foot">(${s.confianza})</span></div>
+          ${Object.keys(s.campos||{}).filter(k=>s.campos[k]).map(k=>`<div class="campo">${escapeHtml(k)}: ${escapeHtml(String(s.campos[k]))}</div>`).join('')}
+          ${s.hecha ? '<p class="t-foot">✓ Guardado</p>' : `<button class="btn ${s.modulo==='gasto'?'btn-secondary':'btn-primary'} btn-sm" style="margin-top:8px;" data-confirmar="${i}:${si}">${s.modulo==='gasto'?'Abrir Gastos':'Confirmar y guardar'}</button>`}
+        </div>`;
+      });
+    }
+    html += `</div>`;
+    return html;
+  }).join('');
+  cont.querySelectorAll('[data-star]').forEach(b=> b.addEventListener('click', ()=> toggleDestacadoIA(parseInt(b.dataset.star))));
+  cont.querySelectorAll('[data-reintentar]').forEach(b=> b.addEventListener('click', ()=> reintentarMensajeIA(parseInt(b.dataset.reintentar), false)));
+  cont.querySelectorAll('[data-claude]').forEach(b=> b.addEventListener('click', ()=> reintentarMensajeIA(parseInt(b.dataset.claude), true)));
+  cont.querySelectorAll('[data-confirmar]').forEach(b=> b.addEventListener('click', ()=>{
+    const [mi,si] = b.dataset.confirmar.split(':').map(Number);
+    confirmarSugerenciaIA(mi, si);
+  }));
+  cont.scrollTop = cont.scrollHeight;
+  window.scrollTo(0,0);
+  document.getElementById('views').scrollTop = document.getElementById('views').scrollHeight;
+}
+function toggleDestacadoIA(idx){
+  state.chatActivo.mensajes[idx].destacado = !state.chatActivo.mensajes[idx].destacado;
+  renderMensajesIA();
+  persistirChatActivo();
+}
+async function persistirChatActivo(){
+  const row = { ID: state.chatActivo.ID || undefined, Titulo: state.chatActivo.Titulo, Mensajes: JSON.stringify(state.chatActivo.mensajes), Usuario:(state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre||'', Papelera:false };
+  const r = await asegurarBackendPropio('saveRow', { table:'IA_CHATS', row });
+  if(!state.chatActivo.ID) state.chatActivo.ID = r.row.ID;
+}
+
+// ---- Foto adjunta ----
+document.getElementById('btn-ia-foto').addEventListener('click', ()=> document.getElementById('ia-file-input').click());
+document.getElementById('ia-file-input').addEventListener('change', function(){
+  const file = this.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(){
+    const img = new Image();
+    img.onload = function(){
+      // Se dibuja desde un <img> YA cargado (evento onload), nunca desde
+      // una Image() recién creada — decodificar un data-URL es asíncrono.
+      const MAXW = 1000;
+      const escala = Math.min(1, MAXW/img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width*escala; canvas.height = img.height*escala;
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      state.iaImagenPendiente = { base64: dataUrl.split(',')[1], mimeType:'image/jpeg', dataUrl };
+      const prev = document.getElementById('ia-foto-preview');
+      prev.classList.remove('hidden');
+      prev.innerHTML = `<img src="${dataUrl}"> <button class="btn btn-text btn-sm" id="btn-ia-quitar-foto">Quitar foto</button>`;
+      document.getElementById('btn-ia-quitar-foto').addEventListener('click', ()=>{ state.iaImagenPendiente=null; prev.classList.add('hidden'); prev.innerHTML=''; });
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+  this.value = '';
+});
+
+document.getElementById('btn-ia-enviar').addEventListener('click', enviarMensajeIA);
+document.getElementById('ia-input').addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); enviarMensajeIA(); } });
+
+async function enviarMensajeIA(){
+  const input = document.getElementById('ia-input');
+  const texto = input.value.trim();
+  const imagen = state.iaImagenPendiente;
+  if(!texto && !imagen) return;
+  if(!state.chatActivo) nuevoChatIA();
+  if(state.chatActivo.mensajes.length===0) state.chatActivo.Titulo = texto ? texto.slice(0,40) : 'Foto';
+
+  state.chatActivo.mensajes.push({ role:'user', content:texto, imagenUrl: imagen?imagen.dataUrl:undefined });
+  input.value = '';
+  const imagenEnviada = imagen; state.iaImagenPendiente = null;
+  document.getElementById('ia-foto-preview').classList.add('hidden'); document.getElementById('ia-foto-preview').innerHTML='';
+  document.getElementById('ia-chat-titulo').textContent = state.chatActivo.Titulo;
+  state.chatActivo.mensajes.push({ role:'ia', pensando:true });
+  renderMensajesIA();
+  await persistirChatActivo();
+  await llamarIA(texto, imagenEnviada, false);
+}
+
+async function llamarIA(texto, imagen, usarClaude){
+  const idxPensando = state.chatActivo.mensajes.length-1;
+  const conversacion = state.chatActivo.mensajes.filter(m=>!m.pensando).map(m=>({role:m.role==='user'?'user':'assistant', content:m.content||''}));
+  try{
+    const extra = { texto: texto||'', conversacion };
+    if(imagen){ extra.imagenBase64 = imagen.base64; extra.mimeType = imagen.mimeType; }
+    const res = await asegurarBackendPropio(usarClaude?'iaAnalizarClaude':'iaAnalizar', extra);
+    if(!res.ok){
+      state.chatActivo.mensajes[idxPensando] = { role:'ia', content: usarClaude ? 'Claude también falló.' : 'Gemini no respondió (sin créditos o error). ¿Quieres intentar con Claude?', error: res.error, _texto:texto, _imagen:imagen };
+    } else {
+      state.chatActivo.mensajes[idxPensando] = { role:'ia', content: res.data.resumen||'', sugerencias: res.data.sugerencias||[], usedModel: res.usedModel };
+    }
+  } catch(e){
+    state.chatActivo.mensajes[idxPensando] = { role:'ia', content:'Error de conexión.', error: e.message, _texto:texto, _imagen:imagen };
+  }
+  renderMensajesIA();
+  await persistirChatActivo();
+}
+function reintentarMensajeIA(idx, usarClaude){
+  const msg = state.chatActivo.mensajes[idx];
+  state.chatActivo.mensajes[idx] = { role:'ia', pensando:true };
+  renderMensajesIA();
+  llamarIA(msg._texto, msg._imagen, usarClaude);
+}
+
+async function confirmarSugerenciaIA(msgIdx, sugIdx){
+  const s = state.chatActivo.mensajes[msgIdx].sugerencias[sugIdx];
+  const c = s.campos || {};
+  try{
+    if(s.modulo==='gasto'){
+      toast('Gastos: ' + (c.Descripcion||'') + ' — ' + money(c.Monto||0) + (c.FormaPago?(' · '+c.FormaPago):'') + (c.DivididoCon?(' · '+c.DivididoCon):''));
+      irApp('gastos');
+      return;
+    }
+    if(s.modulo==='nota'){
+      if(!state.conexiones.notas){ toast('Conecta Notas en Configuración'); return; }
+      await callGAS(state.conexiones.notas, 'saveIdea', { contenido: c.Texto||'' });
+    } else if(s.modulo==='acuerdo'){
+      if(!state.conexiones.acuerdos){ toast('Conecta Acuerdos en Configuración'); return; }
+      await callGAS(state.conexiones.acuerdos, 'saveRow', { table:'ACUERDOS', row:{ Tipo:'acuerdo', Titulo:c.Titulo||'', Detalles:c.Detalles||'', Estado:'pendiente', Usuario:(state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre||'', Papelera:false } });
+    } else if(s.modulo==='lista_compras'){
+      if(!state.conexiones.comidas){ toast('Conecta Comidas en Configuración'); return; }
+      await callGAS(state.conexiones.comidas, 'saveRow', { table:'LISTA_COMPRAS', row:{ Nombre:c.Nombre||'', Categoria:c.Categoria||'', Cantidad:c.Cantidad||'', Comprado:false, Papelera:false } });
+    } else if(s.modulo==='inventario_general'){
+      await asegurarBackendPropio('saveRow', { table:'INVENTARIO_GENERAL', row:{ Nombre:c.Nombre||'', Categoria:c.Categoria||'General', Caracteristicas:c.Caracteristicas||'', Precio:c.Precio||'', Cantidad:1, Papelera:false } });
+    }
+    s.hecha = true;
+    renderMensajesIA();
+    await persistirChatActivo();
+    toast('Guardado en ' + (SUGERENCIA_LABELS[s.modulo]||s.modulo));
+  } catch(e){ toast('Error: ' + e.message); }
+}
 
 /* ============================================================
    8. CONFIGURACIÓN
