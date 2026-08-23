@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#f2f2f7">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- App Completa — v4 (Fase 4: IA unificada Gemini/Claude) — GAS v4 -->
+<!-- App Completa — v5 (Sesión de Gastos: la IA guarda gastos directo) — GAS v4 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -374,6 +374,15 @@ body.chat-abierto .tabbar{display:none;}
         <div class="grouped" id="cfg-conexiones-list"></div>
         <button class="btn btn-primary" id="btn-cfg-guardar-conexiones" style="margin-bottom:16px;">Guardar conexiones</button>
 
+        <div class="section-title t-caption">Sesión de Gastos</div>
+        <p class="t-sub" style="padding:0 4px 12px;">Con esto, cuando la IA detecte un gasto puede guardarlo directo en Gastos (si no, solo te lo enseña y te abre la app). Es la misma sesión y contraseña que ya usas ahí.</p>
+        <div class="card">
+          <input id="gastos-sesion" class="field" placeholder="Nombre de la sesión (ej. Temis y Lot)">
+          <input id="gastos-pass" class="field" type="password" placeholder="Contraseña">
+          <button class="btn btn-secondary" id="btn-gastos-sesion-guardar">Guardar y probar conexión</button>
+          <p class="t-foot" id="gastos-sesion-estado" style="margin-top:8px;"></p>
+        </div>
+
         <div class="section-title t-caption">Mejoras</div>
         <div class="card">
           <textarea id="mejora-texto" class="field" placeholder="Una idea, queja o algo que se te ocurra para la app..."></textarea>
@@ -557,6 +566,33 @@ body.chat-abierto .tabbar{display:none;}
   </div>
 </div>
 
+<!-- ============ MODAL confirmar gasto (desde la IA) ============ -->
+<div class="modal-overlay" id="modal-gasto">
+  <div class="modal modal-wrap">
+    <button class="close-x" data-close-modal="modal-gasto">✕</button>
+    <h2 class="t-title">Así quedaría el gasto</h2>
+    <p class="t-sub" style="margin-top:4px;">Revisa y ajusta antes de guardarlo en Gastos.</p>
+    <div style="margin-top:14px;">
+      <input id="gto-monto" class="field" type="number" min="0" step="0.01" placeholder="Monto">
+      <input id="gto-descripcion" class="field" placeholder="Descripción / tienda">
+      <select id="gto-pago" class="field">
+        <option value="Efectivo">💵 Efectivo</option>
+        <option value="TDC">💳 Tarjeta de crédito</option>
+        <option value="TDD">💳 Tarjeta de débito</option>
+      </select>
+      <select id="gto-quien" class="field"></select>
+      <select id="gto-tipo" class="field">
+        <option value="Personal">Solo yo</option>
+        <option value="Compartido">Compartido</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="gto-cancelar">Cancelar</button>
+      <button class="btn btn-primary" id="gto-guardar">Guardar en Gastos</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -566,7 +602,7 @@ body.chat-abierto .tabbar{display:none;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Cuatro — IA que sugiere a qué módulo va cada mensaje o foto';
+const VERSION_TXT = 'Cinco — la IA ya puede guardar gastos directo en Gastos';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -580,7 +616,8 @@ const APP_LINKS = {
 
 const LS = {
   usuarios:'ac_usuarios', activo:'ac_usuario_activo', conexiones:'ac_conexiones',
-  gasUrlPropia:'ac_gas_url', mejorasCache:'ac_mejoras_cache', inventarioCache:'ac_inventario_cache'
+  gasUrlPropia:'ac_gas_url', mejorasCache:'ac_mejoras_cache', inventarioCache:'ac_inventario_cache',
+  gastosSesion:'ac_gastos_sesion', gastosPass:'ac_gastos_pass'
 };
 
 let state = {
@@ -588,7 +625,8 @@ let state = {
   mejoras: [], inventario: [], categoriasInventario: [], vista:'hoy',
   horario: [], tareas: [], registros: [],
   lugares: [], categoriasLugares: [], filtroLugar: 'todos',
-  iaChats: [], chatActivo: null, iaImagenPendiente: null
+  iaChats: [], chatActivo: null, iaImagenPendiente: null,
+  gastosSesion:'', gastosPass:'', gastosMiembros: []
 };
 let mapaLeaflet = null, mapaMarkersLayer = null;
 
@@ -994,6 +1032,8 @@ function pintarQuickActions(){
 function cargarConexiones(){
   try{ state.conexiones = JSON.parse(localStorage.getItem(LS.conexiones)) || {}; } catch(e){ state.conexiones = {}; }
   state.gasUrlPropia = localStorage.getItem(LS.gasUrlPropia) || '';
+  state.gastosSesion = localStorage.getItem(LS.gastosSesion) || '';
+  state.gastosPass = localStorage.getItem(LS.gastosPass) || '';
   pintarQuickActions();
   cargarHomeWidgets();
   cargarHorarioTareasRegistro();
@@ -1852,8 +1892,12 @@ async function confirmarSugerenciaIA(msgIdx, sugIdx){
   const c = s.campos || {};
   try{
     if(s.modulo==='gasto'){
-      toast('Gastos: ' + (c.Descripcion||'') + ' — ' + money(c.Monto||0) + (c.FormaPago?(' · '+c.FormaPago):'') + (c.DivididoCon?(' · '+c.DivididoCon):''));
-      irApp('gastos');
+      if(!state.conexiones.gastos || !state.gastosSesion){
+        toast('Gastos: ' + (c.Descripcion||'') + ' — ' + money(c.Monto||0) + (c.FormaPago?(' · '+c.FormaPago):'') + (c.DivididoCon?(' · '+c.DivididoCon):'') + '. Conecta tu sesión de Gastos en Configuración para guardarlo directo.');
+        irApp('gastos');
+        return;
+      }
+      await abrirModalGasto(msgIdx, sugIdx, c);
       return;
     }
     if(s.modulo==='nota'){
@@ -1875,6 +1919,54 @@ async function confirmarSugerenciaIA(msgIdx, sugIdx){
   } catch(e){ toast('Error: ' + e.message); }
 }
 
+/* ---- Confirmar gasto detectado por la IA antes de guardarlo en Gastos ---- */
+let gastoIAPendiente = null; // {msgIdx, sugIdx}
+async function abrirModalGasto(msgIdx, sugIdx, campos){
+  gastoIAPendiente = { msgIdx, sugIdx };
+  document.getElementById('gto-monto').value = campos.Monto || '';
+  document.getElementById('gto-descripcion').value = campos.Descripcion || '';
+  const pagoTxt = String(campos.FormaPago||'').toLowerCase();
+  document.getElementById('gto-pago').value = pagoTxt.indexOf('credito')>-1 ? 'TDC' : (pagoTxt.indexOf('debito')>-1 ? 'TDD' : 'Efectivo');
+  document.getElementById('gto-tipo').value = /solo/i.test(campos.DivididoCon||'') ? 'Personal' : 'Compartido';
+
+  const selQuien = document.getElementById('gto-quien');
+  if(!state.gastosMiembros.length){
+    try{
+      const res = await callGAS(state.conexiones.gastos, 'checkSesion', { sesion: state.gastosSesion, pass: state.gastosPass });
+      if(res.ok) state.gastosMiembros = res.miembros||[];
+    } catch(e){}
+  }
+  selQuien.innerHTML = state.gastosMiembros.map(m=>`<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('') || '<option value="">Yo</option>';
+  openModal('modal-gasto');
+}
+document.getElementById('gto-cancelar').addEventListener('click', ()=> closeModal('modal-gasto'));
+document.getElementById('gto-guardar').addEventListener('click', async function(){
+  const monto = parseFloat(document.getElementById('gto-monto').value);
+  if(!monto){ toast('Ponle un monto'); return; }
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Guardando…'});
+  try{
+    await callGAS(state.conexiones.gastos, 'saveGasto', {
+      sesion: state.gastosSesion,
+      costo: monto,
+      concepto: document.getElementById('gto-descripcion').value.trim(),
+      pago: document.getElementById('gto-pago').value,
+      quien_paga: document.getElementById('gto-quien').value,
+      compartido: document.getElementById('gto-tipo').value,
+      notas: 'Agregado desde el chat de IA de App Completa'
+    });
+    if(gastoIAPendiente){
+      const s = state.chatActivo.mensajes[gastoIAPendiente.msgIdx].sugerencias[gastoIAPendiente.sugIdx];
+      s.hecha = true;
+      renderMensajesIA();
+      await persistirChatActivo();
+    }
+    closeModal('modal-gasto');
+    toast('Guardado en Gastos');
+  } catch(e){ toast('Error: ' + e.message); }
+  setBtnState(btn, 'idle', {idle:'Guardar en Gastos'});
+});
+
 /* ============================================================
    8. CONFIGURACIÓN
    ============================================================ */
@@ -1884,7 +1976,40 @@ function pintarConfigTodo(){
   pintarConfigConexiones();
   pintarConfigMejoras();
   pintarConfigCategorias();
+  pintarConfigGastosSesion();
 }
+
+/* ---- Sesión de Gastos (para que la IA pueda guardar gastos directo) ---- */
+function pintarConfigGastosSesion(){
+  document.getElementById('gastos-sesion').value = state.gastosSesion;
+  document.getElementById('gastos-pass').value = state.gastosPass;
+  document.getElementById('gastos-sesion-estado').textContent = state.gastosMiembros.length ? ('Conectado — miembros: ' + state.gastosMiembros.join(', ')) : '';
+}
+document.getElementById('btn-gastos-sesion-guardar').addEventListener('click', async function(){
+  const sesion = document.getElementById('gastos-sesion').value.trim();
+  const pass = document.getElementById('gastos-pass').value;
+  const estado = document.getElementById('gastos-sesion-estado');
+  if(!state.conexiones.gastos){ toast('Primero conecta la URL de Gastos arriba'); return; }
+  if(!sesion){ toast('Ponle un nombre a la sesión'); return; }
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Probando…'});
+  try{
+    const res = await callGAS(state.conexiones.gastos, 'checkSesion', { sesion, pass });
+    if(!res.ok){
+      estado.textContent = '⚠️ ' + (res.error==='PASSWORD' ? 'Contraseña incorrecta' : (res.error||'No se pudo conectar'));
+      estado.style.color = 'var(--red)';
+    } else {
+      state.gastosSesion = sesion; state.gastosPass = pass; state.gastosMiembros = res.miembros||[];
+      localStorage.setItem(LS.gastosSesion, sesion); localStorage.setItem(LS.gastosPass, pass);
+      estado.style.color = '';
+      estado.textContent = 'Conectado — miembros: ' + state.gastosMiembros.join(', ');
+      toast('Sesión de Gastos guardada');
+    }
+  } catch(e){
+    estado.textContent = '⚠️ ' + e.message; estado.style.color = 'var(--red)';
+  }
+  setBtnState(btn, 'idle', {idle:'Guardar y probar conexión'});
+});
 
 /* ---- Categorías editables (Inventario General y Mapa) — regla 12: se
    pueden agregar/renombrar/archivar desde Configuración, nada quemado en
