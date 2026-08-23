@@ -1,0 +1,1207 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>App Completa</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#f2f2f7">
+<!-- App Completa — v1 (Fase 1: cascarón, Home, navegación a las 5 apps) — GAS v1 -->
+<style>
+:root{
+  --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
+  --text:#1c1c1e; --text-soft:#6e6e73; --text-faint:#98989d;
+  --separator:rgba(60,60,67,0.29); --separator-op:rgba(60,60,67,0.13);
+  --accent:#007aff; --accent-soft:#e8f1ff;
+  --red:#ff3b30; --green:#34c759; --orange:#ff9500; --yellow:#ffcc00;
+  --gastos:#a9782f; --comidas:#4f9d5c; --acuerdos:#1f6f78; --ropa:#b5563c; --notas:#7d5fbd; --general:#5856d6;
+  --radius-lg:18px; --radius-md:14px; --radius-sm:10px;
+  --shadow:0 1px 3px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.04);
+  --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#000000; --bg-elev:#1c1c1e; --bg-grouped:#1c1c1e;
+    --text:#f2f2f7; --text-soft:#98989d; --text-faint:#636366;
+    --separator:rgba(84,84,88,0.65); --separator-op:rgba(84,84,88,0.32);
+    --accent:#0a84ff; --accent-soft:#0a2540;
+    --shadow:0 1px 3px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+  }
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Segoe UI",Roboto,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased; overscroll-behavior-y:none;
+}
+button,input,select,textarea{font-family:inherit; color:inherit;}
+a{color:var(--accent); text-decoration:none;}
+h1,h2,h3,p{margin:0;}
+.hidden{display:none !important;}
+
+/* ---------- Tipografía HIG ---------- */
+.t-large{font-size:34px; font-weight:700; letter-spacing:.2px;}
+.t-title{font-size:22px; font-weight:700;}
+.t-headline{font-size:17px; font-weight:600;}
+.t-body{font-size:16px; font-weight:400;}
+.t-sub{font-size:14px; color:var(--text-soft);}
+.t-foot{font-size:13px; color:var(--text-soft);}
+.t-caption{font-size:12px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.4px; font-weight:600;}
+
+/* ---------- Login / primer uso ---------- */
+#screen-login{
+  position:fixed; inset:0; z-index:500; background:var(--bg);
+  display:flex; align-items:center; justify-content:center; padding:24px;
+}
+.login-card{width:100%; max-width:380px; text-align:center;}
+.login-logo{width:72px; height:72px; border-radius:20px; margin:0 auto 20px; background:linear-gradient(135deg,var(--accent),var(--general)); display:flex; align-items:center; justify-content:center; font-size:34px; box-shadow:var(--shadow);}
+.login-card h1{margin-bottom:6px;}
+.login-card p{margin-bottom:24px;}
+.field{
+  width:100%; padding:14px 16px; border-radius:var(--radius-md); border:1px solid var(--separator);
+  background:var(--bg-elev); color:var(--text); font-size:16px; margin-bottom:12px; outline:none;
+}
+.field:focus{border-color:var(--accent);}
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  padding:13px 20px; border-radius:var(--radius-md); border:none; font-size:16px; font-weight:600;
+  cursor:pointer; transition:transform .08s ease, opacity .15s ease; width:100%;
+}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:var(--accent); color:#fff;}
+.btn-primary:disabled{opacity:.5; cursor:default;}
+.btn-secondary{background:var(--separator-op); color:var(--text);}
+.btn-text{background:transparent; color:var(--accent); width:auto; padding:8px 10px;}
+.btn-danger{background:var(--red); color:#fff;}
+.btn-sm{padding:8px 14px; font-size:14px; width:auto;}
+
+/* ---------- Shell / layout ---------- */
+#app{display:none; min-height:100%;}
+#app.on{display:flex;}
+.sidebar{
+  display:none; width:260px; flex-shrink:0; background:var(--bg-elev); border-right:1px solid var(--separator-op);
+  padding:20px 12px; flex-direction:column; gap:2px;
+}
+.sidebar .brand{display:flex; align-items:center; gap:10px; padding:8px 10px 20px;}
+.sidebar .brand .logo{width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,var(--accent),var(--general)); display:flex; align-items:center; justify-content:center; font-size:18px;}
+.nav-item{
+  display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:var(--radius-sm);
+  cursor:pointer; font-size:15px; font-weight:500; color:var(--text-soft); border:none; background:none; text-align:left; width:100%;
+}
+.nav-item .ic{width:22px; text-align:center; font-size:17px;}
+.nav-item.active{background:var(--accent-soft); color:var(--accent); font-weight:700;}
+.nav-item:active{opacity:.7;}
+.nav-sep{height:1px; background:var(--separator-op); margin:10px 6px;}
+
+#main-wrap{flex:1; min-width:0; display:flex; flex-direction:column; height:100vh; overflow:hidden;}
+header.topbar{
+  padding:calc(14px + var(--safe-t)) 18px 12px; display:flex; align-items:center; justify-content:space-between;
+  background:var(--bg); position:sticky; top:0; z-index:10;
+}
+header.topbar .user-chip{
+  display:flex; align-items:center; gap:8px; background:var(--bg-elev); border:1px solid var(--separator-op);
+  border-radius:20px; padding:6px 12px 6px 6px; cursor:pointer; font-size:14px; font-weight:600;
+}
+header.topbar .user-chip .av{width:26px; height:26px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;}
+
+#views{flex:1; overflow-y:auto; padding:0 18px calc(96px + var(--safe-b));}
+@media (min-width:900px){ #views{padding:0 28px 40px;} }
+.view{display:none;}
+.view.on{display:block; animation:fadein .18s ease;}
+@keyframes fadein{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);}}
+
+/* ---------- Cards / listas agrupadas ---------- */
+.card{background:var(--bg-elev); border-radius:var(--radius-lg); box-shadow:var(--shadow); padding:16px; margin-bottom:16px;}
+.section-title{padding:0 4px; margin:22px 0 8px;}
+.section-title:first-child{margin-top:0;}
+.grouped{background:var(--bg-elev); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow); margin-bottom:16px;}
+.row{display:flex; align-items:center; gap:12px; padding:13px 16px; border-bottom:1px solid var(--separator-op); cursor:pointer;}
+.row:last-child{border-bottom:none;}
+.row:active{background:var(--separator-op);}
+.row .ic{width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:15px; color:#fff; flex-shrink:0;}
+.row .body{flex:1; min-width:0;}
+.row .body .main{font-size:16px; font-weight:500;}
+.row .body .sub{font-size:13px; color:var(--text-soft); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.row .chev{color:var(--text-faint); font-size:14px;}
+.row.disabled{cursor:default;}
+.empty-row{padding:22px 16px; text-align:center; color:var(--text-faint); font-size:14px;}
+
+/* ---------- Quick actions (Home) ---------- */
+.quick-row{display:flex; gap:10px; overflow-x:auto; padding:2px 2px 14px; -webkit-overflow-scrolling:touch;}
+.quick-row::-webkit-scrollbar{display:none;}
+.quick-btn{
+  flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:6px; width:74px;
+  background:none; border:none; cursor:pointer; padding:4px;
+}
+.quick-btn .circ{width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:22px; color:#fff; box-shadow:var(--shadow);}
+.quick-btn:active .circ{transform:scale(.92);}
+.quick-btn span{font-size:12px; font-weight:500; color:var(--text-soft); text-align:center;}
+
+/* ---------- Colapsables ---------- */
+.collapse{background:var(--bg-elev); border-radius:var(--radius-lg); box-shadow:var(--shadow); margin-bottom:14px; overflow:hidden;}
+.collapse-head{display:flex; align-items:center; justify-content:space-between; padding:15px 16px; cursor:pointer;}
+.collapse-head:active{background:var(--separator-op);}
+.collapse-head .tw{transition:transform .2s ease; color:var(--text-faint); font-size:13px;}
+.collapse.open .collapse-head .tw{transform:rotate(90deg);}
+.collapse-body{display:none; padding:0 16px 14px;}
+.collapse.open .collapse-body{display:block;}
+.badge{background:var(--separator-op); color:var(--text-soft); font-size:12px; font-weight:700; padding:2px 9px; border-radius:20px;}
+
+/* ---------- Tab bar (móvil) ---------- */
+.tabbar{
+  position:fixed; left:0; right:0; bottom:0; z-index:20; display:flex;
+  background:rgba(255,255,255,.86); backdrop-filter:blur(20px) saturate(180%);
+  border-top:1px solid var(--separator-op); padding:6px 4px calc(6px + var(--safe-b));
+}
+@media (prefers-color-scheme:dark){ .tabbar{background:rgba(28,28,30,.86);} }
+.tab-item{
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; border:none; background:none;
+  cursor:pointer; padding:4px; color:var(--text-faint);
+}
+.tab-item .ic{font-size:22px;}
+.tab-item span{font-size:10px; font-weight:600;}
+.tab-item.active{color:var(--accent);}
+@media (min-width:900px){ .tabbar{display:none;} .sidebar{display:flex;} header.topbar{padding-left:0;} }
+
+/* ---------- Botones de guardar con estado ---------- */
+.btn[data-state="saving"]{opacity:.65; cursor:default;}
+.btn[data-state="saved"]{background:var(--green);}
+
+/* ---------- Modal ---------- */
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(0,0,0,.42); z-index:400; display:flex; align-items:flex-end;
+  justify-content:center; opacity:0; pointer-events:none; transition:opacity .18s ease;
+}
+.modal-overlay.on{opacity:1; pointer-events:auto;}
+@media (min-width:640px){ .modal-overlay{align-items:center;} }
+.modal{
+  background:var(--bg-elev); width:100%; max-width:440px; border-radius:20px 20px 0 0; padding:22px 20px calc(20px + var(--safe-b));
+  transform:translateY(16px); transition:transform .2s ease; max-height:86vh; overflow-y:auto;
+}
+.modal-overlay.on .modal{transform:translateY(0);}
+@media (min-width:640px){ .modal{border-radius:20px; transform:scale(.96); margin-bottom:0;} .modal-overlay.on .modal{transform:scale(1);} }
+.modal h2{margin-bottom:4px;}
+.modal .close-x{position:absolute; top:14px; right:14px; width:30px; height:30px; border-radius:50%; background:var(--separator-op); border:none; font-size:16px; cursor:pointer; color:var(--text-soft);}
+.modal-wrap{position:relative;}
+.modal-actions{display:flex; gap:10px; margin-top:18px;}
+.list-editable .row{cursor:default;}
+.icon-btn{width:32px; height:32px; border-radius:8px; border:none; background:var(--separator-op); color:var(--text-soft); cursor:pointer; font-size:14px; flex-shrink:0;}
+.icon-btn:active{opacity:.6;}
+.switch{position:relative; width:46px; height:28px; border-radius:16px; background:var(--separator); flex-shrink:0; border:none; cursor:pointer;}
+.switch::after{content:''; position:absolute; top:2px; left:2px; width:24px; height:24px; border-radius:50%; background:#fff; transition:transform .18s ease; box-shadow:0 1px 3px rgba(0,0,0,.3);}
+.switch.on{background:var(--green);}
+.switch.on::after{transform:translateX(18px);}
+textarea.field{resize:vertical; min-height:70px;}
+
+/* ---------- Toast ---------- */
+#toast{
+  position:fixed; left:50%; bottom:calc(90px + var(--safe-b)); transform:translateX(-50%) translateY(20px);
+  background:#1c1c1e; color:#fff; padding:11px 20px; border-radius:24px; font-size:14px; font-weight:500;
+  z-index:600; opacity:0; pointer-events:none; transition:all .25s ease; box-shadow:var(--shadow); max-width:88vw; text-align:center;
+}
+#toast.on{opacity:1; transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<!-- ============ PANTALLA DE PRIMER USO ============ -->
+<div id="screen-login">
+  <div class="login-card">
+    <div class="login-logo">🏠</div>
+    <h1 class="t-title" id="login-title">¿Cómo te llamas?</h1>
+    <p class="t-sub" id="login-sub">Para empezar, dinos tu nombre. Podrás agregar más personas o cambiar de usuario después, desde Configuración.</p>
+    <input id="login-nombre" class="field" placeholder="Tu nombre" maxlength="40" autocomplete="off">
+    <div id="login-pass-wrap" class="hidden">
+      <input id="login-pass" class="field" type="password" placeholder="Contraseña" autocomplete="off">
+    </div>
+    <button class="btn btn-primary" id="btn-login-continuar">Continuar</button>
+    <div id="login-switch-list" class="hidden" style="margin-top:18px; text-align:left;"></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <nav class="sidebar" id="sidebar"></nav>
+
+  <div id="main-wrap">
+    <header class="topbar">
+      <h1 class="t-title" id="topbar-title">Hoy</h1>
+      <button class="user-chip" id="btn-user-chip">
+        <span class="av" id="user-av">?</span>
+        <span id="user-nombre-chip">—</span>
+      </button>
+    </header>
+
+    <div id="views">
+
+      <!-- ---------- HOY (Home) ---------- -->
+      <section class="view" id="view-hoy">
+        <div class="quick-row" id="quick-actions"></div>
+
+        <div class="section-title t-caption">Tu horario</div>
+        <div class="grouped">
+          <div class="empty-row">La tabla de horario, tareas y registro de tiempo/sueño llega en la Fase 2.</div>
+        </div>
+
+        <div class="section-title t-caption">Resumen de hoy</div>
+        <div id="home-widgets" class="grouped"></div>
+
+        <div id="home-collapsibles"></div>
+
+        <div class="section-title t-caption">Tus apps</div>
+        <div class="grouped" id="home-apps-nav"></div>
+      </section>
+
+      <!-- ---------- MÁS (móvil) ---------- -->
+      <section class="view" id="view-mas">
+        <div class="section-title t-caption">Más</div>
+        <div class="grouped" id="mas-list"></div>
+      </section>
+
+      <!-- ---------- INVENTARIO GENERAL ---------- -->
+      <section class="view" id="view-inventario">
+        <div class="section-title t-caption">Inventario general</div>
+        <p class="t-sub" style="padding:0 4px 12px;">Tus cosas que no son comida ni ropa — muebles, electrónica, herramientas… Cada ítem puede llevar su precio.</p>
+        <button class="btn btn-primary" id="btn-inv-nuevo" style="margin-bottom:14px;">+ Agregar objeto</button>
+        <div class="grouped" id="inv-list"></div>
+      </section>
+
+      <!-- ---------- CONFIGURACIÓN ---------- -->
+      <section class="view" id="view-config">
+        <div class="section-title t-caption">Versión</div>
+        <div class="grouped">
+          <div class="row disabled">
+            <div class="body"><div class="main">Versión actual</div><div class="sub" id="cfg-version-txt">Uno — cascarón inicial</div></div>
+            <button class="btn btn-text btn-sm" id="btn-force-update">Actualizar ahora</button>
+          </div>
+        </div>
+
+        <div class="section-title t-caption">Usuarios</div>
+        <div class="grouped" id="cfg-usuarios-list"></div>
+        <button class="btn btn-secondary" id="btn-cfg-nuevo-usuario" style="margin-bottom:16px;">+ Agregar usuario</button>
+
+        <div class="section-title t-caption">Conexiones</div>
+        <p class="t-sub" style="padding:0 4px 12px;">Pega aquí la URL de la Web App de cada una de tus apps (Configuración → esa misma URL que ya tienes guardada en cada una). Con esto, el Home puede mostrarte datos reales.</p>
+        <div class="grouped" id="cfg-conexiones-list"></div>
+        <button class="btn btn-primary" id="btn-cfg-guardar-conexiones" style="margin-bottom:16px;">Guardar conexiones</button>
+
+        <div class="section-title t-caption">Mejoras</div>
+        <div class="card">
+          <textarea id="mejora-texto" class="field" placeholder="Una idea, queja o algo que se te ocurra para la app..."></textarea>
+          <button class="btn btn-primary" id="btn-mejora-agregar">Agregar</button>
+        </div>
+        <div class="grouped" id="cfg-mejoras-list"></div>
+
+        <div class="section-title t-caption">Respaldo</div>
+        <div class="grouped">
+          <div class="row" id="row-exportar">
+            <div class="ic" style="background:var(--general);">⇩</div>
+            <div class="body"><div class="main">Exportar respaldo</div><div class="sub">Descarga tus usuarios, mejoras e inventario general en un archivo</div></div>
+            <span class="chev">›</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ---------- TAB BAR (móvil) ---------- -->
+    <nav class="tabbar" id="tabbar"></nav>
+  </div>
+</div>
+
+<!-- ============ MODAL genérico de confirmación ============ -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal modal-wrap">
+    <h2 class="t-title" id="confirm-title">¿Eliminar?</h2>
+    <p class="t-sub" id="confirm-body" style="margin-top:8px;">Esta acción se puede deshacer desde la papelera.</p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="confirm-cancelar">Cancelar</button>
+      <button class="btn btn-danger" id="confirm-aceptar">Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL usuario (cambiar / agregar / editar) ============ -->
+<div class="modal-overlay" id="modal-usuario">
+  <div class="modal modal-wrap">
+    <button class="close-x" data-close-modal="modal-usuario">✕</button>
+    <h2 class="t-title" id="modal-usuario-titulo">Cambiar de usuario</h2>
+    <div id="modal-usuario-lista" style="margin:14px 0;"></div>
+    <div id="modal-usuario-form" class="hidden">
+      <input id="mu-nombre" class="field" placeholder="Nombre" maxlength="40">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 4px 14px;">
+        <span class="t-body">Pedir contraseña al entrar</span>
+        <button class="switch" id="mu-pass-switch"></button>
+      </div>
+      <div id="mu-pass-wrap" class="hidden"><input id="mu-pass" class="field" type="password" placeholder="Contraseña"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="mu-cancelar">Cancelar</button>
+        <button class="btn btn-primary" id="mu-guardar">Guardar</button>
+      </div>
+    </div>
+    <button class="btn btn-secondary" id="btn-mu-agregar-nuevo">+ Agregar usuario nuevo</button>
+  </div>
+</div>
+
+<!-- ============ MODAL objeto de inventario ============ -->
+<div class="modal-overlay" id="modal-inv">
+  <div class="modal modal-wrap">
+    <button class="close-x" data-close-modal="modal-inv">✕</button>
+    <h2 class="t-title" id="modal-inv-titulo">Nuevo objeto</h2>
+    <input type="hidden" id="inv-id">
+    <div style="margin-top:14px;">
+      <input id="inv-nombre" class="field" placeholder="Nombre (ej. Silla de escritorio)">
+      <select id="inv-categoria" class="field"></select>
+      <textarea id="inv-caracteristicas" class="field" placeholder="Características (color, marca, estado, dónde está...)"></textarea>
+      <div style="display:flex; gap:10px;">
+        <input id="inv-cantidad" class="field" type="number" min="1" placeholder="Cantidad" value="1">
+        <input id="inv-precio" class="field" type="number" min="0" step="0.01" placeholder="Precio ($)">
+      </div>
+      <input id="inv-ubicacion" class="field" placeholder="Ubicación (ej. Recámara)">
+      <input id="inv-origen" class="field" placeholder="Origen (opcional — ej. de dónde lo compraste)">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="inv-cancelar">Cancelar</button>
+      <button class="btn btn-primary" id="inv-guardar">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   1. CONFIGURACIÓN GENERAL
+   ============================================================ */
+const VERSION_TXT = 'Uno — cascarón inicial';
+const APP_TITLE = 'App Completa';
+
+// URLs reales de cada app (GitHub Pages) para la navegación completa.
+const APP_LINKS = {
+  gastos:   { nombre:'Gastos',   emoji:'💳', color:'var(--gastos)',   url:'https://temisesba.github.io/finanzas/' },
+  comidas:  { nombre:'Comidas',  emoji:'🍽️', color:'var(--comidas)',  url:'https://temisesba.github.io/comidas/' },
+  acuerdos: { nombre:'Acuerdos', emoji:'🤝', color:'var(--acuerdos)', url:'https://temisesba.github.io/acuerdos/' },
+  ropa:     { nombre:'Closet',   emoji:'👕', color:'var(--ropa)',     url:'https://temisesba.github.io/ropa/' },
+  notas:    { nombre:'Notas',    emoji:'✎',  color:'var(--notas)',   url:'https://temisesba.github.io/notas/' }
+};
+
+const LS = {
+  usuarios:'ac_usuarios', activo:'ac_usuario_activo', conexiones:'ac_conexiones',
+  gasUrlPropia:'ac_gas_url', mejorasCache:'ac_mejoras_cache', inventarioCache:'ac_inventario_cache'
+};
+
+let state = {
+  usuarios: [], usuarioActivo: null, conexiones: {}, gasUrlPropia:'',
+  mejoras: [], inventario: [], categoriasInventario: [], vista:'hoy'
+};
+
+/* ============================================================
+   2. HELPERS GENERALES
+   ============================================================ */
+function uid(){ return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+function hoyISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function esVerdadero(v){ return v===true || String(v).toLowerCase()==='true'; }
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function linkify(s){
+  return escapeHtml(s).replace(/(https?:\/\/[^\s]+)/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+}
+function money(n){ n=parseFloat(n)||0; return '$' + n.toLocaleString('es-MX',{minimumFractionDigits:2, maximumFractionDigits:2}); }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('on'), 2600);
+}
+function iniciales(nombre){ return (nombre||'?').trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase(); }
+
+function setBtnState(btn, estado, textos){
+  // textos: {idle, saving, saved}
+  btn.dataset.state = estado;
+  if(estado==='saving'){ btn.disabled=true; btn.textContent = textos.saving || 'Guardando…'; }
+  else if(estado==='saved'){ btn.disabled=false; btn.textContent = textos.saved || 'Guardado'; }
+  else { btn.disabled=false; btn.textContent = textos.idle || 'Guardar'; }
+}
+
+// Fetch genérico hacia un backend de Apps Script (mismo patrón que ya usan
+// Acuerdos/Comidas/Ropa/Notas: POST con FormData payload=JSON, evita
+// preflight CORS).
+async function callGAS(url, action, extra){
+  if(!url) throw new Error('Sin URL configurada');
+  const body = Object.assign({ action }, extra||{});
+  const f = new FormData();
+  f.append('payload', JSON.stringify(body));
+  const res = await fetch(url, { method:'POST', body:f });
+  const data = await res.json();
+  if(data.error) throw new Error(data.error);
+  return data;
+}
+
+/* ============================================================
+   3. MODALES Y CONFIRMACIÓN REUSABLE
+   ============================================================ */
+function openModal(id){ document.getElementById(id).classList.add('on'); document.body.style.overflow='hidden'; pushHistory(id); }
+function closeModal(id){ document.getElementById(id).classList.remove('on'); document.body.style.overflow=''; }
+document.querySelectorAll('[data-close-modal]').forEach(b=>{
+  b.addEventListener('click', ()=> closeModal(b.dataset.closeModal));
+});
+// Clic fuera: en modales de confirmación/edición SIEMPRE se pregunta si hay
+// cambios sin guardar (regla 6) — como los formularios de esta app son
+// cortos, la señal de "sin guardar" es simplemente si algún campo tiene
+// texto; si no hay nada escrito, cerrar directo no pierde nada.
+function modalTieneCambios(modalEl){
+  const campos = modalEl.querySelectorAll('input[type=text], input:not([type]), textarea, input[type=number]');
+  for(const c of campos){ if(c.value && c.value.trim()!=='') return true; }
+  return false;
+}
+document.querySelectorAll('.modal-overlay').forEach(overlay=>{
+  overlay.addEventListener('mousedown', (e)=>{
+    if(e.target !== overlay) return;
+    const modal = overlay.querySelector('.modal');
+    if(overlay.id !== 'modal-confirm' && modalTieneCambios(modal)){
+      if(!confirm('Tienes cambios sin guardar. ¿Cerrar de todas formas?')) return;
+    }
+    closeModal(overlay.id);
+  });
+});
+
+let confirmCallback = null;
+function pedirConfirmacion(titulo, cuerpo, onAceptar){
+  document.getElementById('confirm-title').textContent = titulo;
+  document.getElementById('confirm-body').textContent = cuerpo;
+  confirmCallback = onAceptar;
+  openModal('modal-confirm');
+}
+document.getElementById('confirm-cancelar').addEventListener('click', ()=> closeModal('modal-confirm'));
+document.getElementById('confirm-aceptar').addEventListener('click', ()=>{
+  closeModal('modal-confirm');
+  if(confirmCallback) confirmCallback();
+});
+
+// Historial propio para que el botón "atrás" del celular cierre modales /
+// regrese de vista en vez de salir de la app (regla 13).
+function pushHistory(tag){ history.pushState({ acTag:tag }, ''); }
+window.addEventListener('popstate', (e)=>{
+  const modalAbierto = document.querySelector('.modal-overlay.on');
+  if(modalAbierto){ closeModal(modalAbierto.id); return; }
+  if(state.vista !== 'hoy'){ irAVista('hoy'); }
+});
+
+/* ============================================================
+   4. USUARIOS (regla 2)
+   ============================================================ */
+function cargarUsuarios(){
+  try{ state.usuarios = JSON.parse(localStorage.getItem(LS.usuarios)) || []; } catch(e){ state.usuarios = []; }
+  state.usuarioActivo = localStorage.getItem(LS.activo) || null;
+}
+function guardarUsuarios(){ localStorage.setItem(LS.usuarios, JSON.stringify(state.usuarios)); }
+function setUsuarioActivo(id){ state.usuarioActivo = id; localStorage.setItem(LS.activo, id); pintarUserChip(); }
+
+function pintarUserChip(){
+  const u = state.usuarios.find(x=>x.id===state.usuarioActivo);
+  document.getElementById('user-nombre-chip').textContent = u ? u.nombre : '—';
+  document.getElementById('user-av').textContent = u ? iniciales(u.nombre) : '?';
+}
+
+function iniciarLogin(){
+  cargarUsuarios();
+  if(state.usuarios.length && state.usuarioActivo && state.usuarios.some(u=>u.id===state.usuarioActivo)){
+    mostrarApp(); return;
+  }
+  if(state.usuarios.length){
+    // Ya hay usuarios creados pero ninguno activo: mostrar selector.
+    document.getElementById('login-title').textContent = '¿Quién eres?';
+    document.getElementById('login-sub').textContent = 'Elige tu usuario para continuar.';
+    document.getElementById('login-nombre').classList.add('hidden');
+    document.getElementById('btn-login-continuar').classList.add('hidden');
+    const wrap = document.getElementById('login-switch-list');
+    wrap.classList.remove('hidden');
+    wrap.innerHTML = state.usuarios.map(u=>`
+      <button class="btn btn-secondary" style="margin-bottom:8px;" data-uid="${u.id}">${escapeHtml(u.nombre)}</button>
+    `).join('') + `<button class="btn btn-text" id="btn-login-nuevo-usuario" style="margin-top:6px;">+ Soy alguien nuevo</button>`;
+    wrap.querySelectorAll('[data-uid]').forEach(b=>{
+      b.addEventListener('click', ()=> intentarEntrar(b.dataset.uid));
+    });
+    document.getElementById('btn-login-nuevo-usuario').addEventListener('click', ()=>{
+      document.getElementById('login-title').textContent = '¿Cómo te llamas?';
+      document.getElementById('login-sub').textContent = 'Se agregará como un usuario nuevo.';
+      document.getElementById('login-nombre').classList.remove('hidden');
+      document.getElementById('btn-login-continuar').classList.remove('hidden');
+      wrap.classList.add('hidden');
+    });
+    return;
+  }
+  // Primer uso real: nadie ha creado usuario todavía.
+  document.getElementById('screen-login').classList.remove('hidden');
+}
+
+function intentarEntrar(uidVal){
+  const u = state.usuarios.find(x=>x.id===uidVal);
+  if(!u) return;
+  if(u.password){
+    const p = prompt('Contraseña de ' + u.nombre + ':');
+    if(p !== u.password){ toast('Contraseña incorrecta'); return; }
+  }
+  setUsuarioActivo(u.id);
+  mostrarApp();
+}
+
+document.getElementById('btn-login-continuar').addEventListener('click', ()=>{
+  const nombre = document.getElementById('login-nombre').value.trim();
+  if(!nombre){ toast('Escribe tu nombre'); return; }
+  const nuevo = { id: uid(), nombre, password: '' };
+  state.usuarios.push(nuevo);
+  guardarUsuarios();
+  setUsuarioActivo(nuevo.id);
+  mostrarApp();
+});
+
+function mostrarApp(){
+  document.getElementById('screen-login').classList.add('hidden');
+  document.getElementById('app').classList.add('on');
+  pintarUserChip();
+  construirNav();
+  cargarConexiones();
+  irAVista('hoy');
+}
+
+/* ---- Modal: cambiar / agregar / editar usuarios ---- */
+document.getElementById('btn-user-chip').addEventListener('click', abrirModalUsuarios);
+document.getElementById('btn-cfg-nuevo-usuario').addEventListener('click', ()=>{ abrirModalUsuarios(); mostrarFormUsuario(null); });
+
+function abrirModalUsuarios(){
+  pintarListaUsuariosModal();
+  document.getElementById('modal-usuario-form').classList.add('hidden');
+  document.getElementById('modal-usuario-titulo').textContent = 'Cambiar de usuario';
+  openModal('modal-usuario');
+}
+function pintarListaUsuariosModal(){
+  const cont = document.getElementById('modal-usuario-lista');
+  cont.innerHTML = state.usuarios.map(u=>`
+    <div class="row" data-uid="${u.id}">
+      <div class="ic" style="background:var(--accent);">${iniciales(u.nombre)}</div>
+      <div class="body"><div class="main">${escapeHtml(u.nombre)}${u.id===state.usuarioActivo?' · activo':''}</div>
+      <div class="sub">${u.password?'Con contraseña':'Sin contraseña'}</div></div>
+      <button class="icon-btn" data-editar="${u.id}">✎</button>
+    </div>
+  `).join('') || '<div class="empty-row">Sin usuarios todavía</div>';
+  cont.querySelectorAll('[data-editar]').forEach(b=>{
+    b.addEventListener('click', (e)=>{ e.stopPropagation(); mostrarFormUsuario(b.dataset.editar); });
+  });
+  cont.querySelectorAll('.row[data-uid]').forEach(r=>{
+    r.addEventListener('click', ()=>{
+      const idv = r.dataset.uid;
+      if(idv === state.usuarioActivo){ closeModal('modal-usuario'); return; }
+      const u = state.usuarios.find(x=>x.id===idv);
+      if(u.password){
+        const p = prompt('Contraseña de ' + u.nombre + ':');
+        if(p !== u.password){ toast('Contraseña incorrecta'); return; }
+      }
+      setUsuarioActivo(idv);
+      closeModal('modal-usuario');
+      toast('Ahora eres ' + u.nombre);
+      pintarConfigUsuarios();
+    });
+  });
+}
+document.getElementById('btn-mu-agregar-nuevo').addEventListener('click', ()=> mostrarFormUsuario(null));
+
+let usuarioEditandoId = null;
+function mostrarFormUsuario(idv){
+  usuarioEditandoId = idv;
+  const form = document.getElementById('modal-usuario-form');
+  form.classList.remove('hidden');
+  document.getElementById('modal-usuario-titulo').textContent = idv ? 'Editar usuario' : 'Agregar usuario';
+  const u = idv ? state.usuarios.find(x=>x.id===idv) : null;
+  document.getElementById('mu-nombre').value = u ? u.nombre : '';
+  document.getElementById('mu-pass').value = u ? (u.password||'') : '';
+  const sw = document.getElementById('mu-pass-switch');
+  sw.classList.toggle('on', !!(u && u.password));
+  document.getElementById('mu-pass-wrap').classList.toggle('hidden', !(u && u.password));
+}
+document.getElementById('mu-pass-switch').addEventListener('click', function(){
+  this.classList.toggle('on');
+  document.getElementById('mu-pass-wrap').classList.toggle('hidden', !this.classList.contains('on'));
+});
+document.getElementById('mu-cancelar').addEventListener('click', ()=> closeModal('modal-usuario'));
+document.getElementById('mu-guardar').addEventListener('click', ()=>{
+  const nombre = document.getElementById('mu-nombre').value.trim();
+  if(!nombre){ toast('Escribe un nombre'); return; }
+  const conPass = document.getElementById('mu-pass-switch').classList.contains('on');
+  const pass = conPass ? document.getElementById('mu-pass').value : '';
+  if(usuarioEditandoId){
+    const u = state.usuarios.find(x=>x.id===usuarioEditandoId);
+    u.nombre = nombre; u.password = pass;
+  } else {
+    state.usuarios.push({ id: uid(), nombre, password: pass });
+  }
+  guardarUsuarios();
+  pintarUserChip();
+  pintarListaUsuariosModal();
+  pintarConfigUsuarios();
+  document.getElementById('modal-usuario-form').classList.add('hidden');
+  toast('Usuario guardado');
+});
+
+/* ---- Config → lista de usuarios (con eliminar) ---- */
+function pintarConfigUsuarios(){
+  const cont = document.getElementById('cfg-usuarios-list');
+  cont.innerHTML = state.usuarios.map(u=>`
+    <div class="row disabled">
+      <div class="ic" style="background:var(--accent);">${iniciales(u.nombre)}</div>
+      <div class="body"><div class="main">${escapeHtml(u.nombre)}${u.id===state.usuarioActivo?' · activo':''}</div></div>
+      <button class="icon-btn" data-ed="${u.id}" style="margin-right:6px;">✎</button>
+      <button class="icon-btn" data-del="${u.id}">🗑</button>
+    </div>
+  `).join('') || '<div class="empty-row">Sin usuarios</div>';
+  cont.querySelectorAll('[data-ed]').forEach(b=> b.addEventListener('click', ()=>{ abrirModalUsuarios(); mostrarFormUsuario(b.dataset.ed); }));
+  cont.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click', ()=>{
+    if(state.usuarios.length <= 1){ toast('Debe quedar al menos un usuario'); return; }
+    const u = state.usuarios.find(x=>x.id===b.dataset.del);
+    pedirConfirmacion('¿Eliminar a ' + u.nombre + '?', 'Esto no borra sus datos en las otras apps, solo lo quita de este cascarón.', ()=>{
+      state.usuarios = state.usuarios.filter(x=>x.id!==u.id);
+      guardarUsuarios();
+      if(state.usuarioActivo === u.id) setUsuarioActivo(state.usuarios[0].id);
+      pintarConfigUsuarios();
+      pintarUserChip();
+      toast('Usuario eliminado');
+    });
+  }));
+}
+
+/* ============================================================
+   5. NAVEGACIÓN (sidebar + tab bar + vistas)
+   ============================================================ */
+const NAV_ITEMS = [
+  { id:'hoy', icon:'🏠', label:'Hoy', tab:true },
+  { id:'app:gastos', icon:'💳', label:'Gastos', tab:true, externo:true },
+  { id:'app:comidas', icon:'🍽️', label:'Comidas', tab:true, externo:true },
+  { id:'app:ropa', icon:'👕', label:'Closet', tab:false, externo:true },
+  { id:'inventario', icon:'📦', label:'Inventario', tab:false },
+  { id:'app:acuerdos', icon:'🤝', label:'Acuerdos', tab:false, externo:true },
+  { id:'app:notas', icon:'✎', label:'Notas', tab:false, externo:true },
+  { id:'config', icon:'⚙️', label:'Config', tab:false },
+];
+// En móvil el tab bar solo tiene 5 huecos: Hoy, Gastos, Comidas, Closet, Más.
+const TAB_MOVIL = ['hoy','app:gastos','app:comidas','app:ropa','mas'];
+
+function irApp(key){
+  const a = APP_LINKS[key];
+  if(!a){ toast('Esa app llega en una fase siguiente'); return; }
+  location.href = a.url;
+}
+
+function construirNav(){
+  // Sidebar (escritorio)
+  const sb = document.getElementById('sidebar');
+  sb.innerHTML = `<div class="brand"><div class="logo">🏠</div><span class="t-headline">${APP_TITLE}</span></div>`;
+  NAV_ITEMS.forEach((it,i)=>{
+    const btn = document.createElement('button');
+    btn.className = 'nav-item'; btn.dataset.navId = it.id;
+    btn.innerHTML = `<span class="ic">${it.icon}</span><span>${it.label}</span>`;
+    btn.addEventListener('click', ()=> it.externo ? irApp(it.id.split(':')[1]) : irAVista(it.id));
+    sb.appendChild(btn);
+    if(it.id==='inventario'){ const sep=document.createElement('div'); sep.className='nav-sep'; sb.appendChild(sep); }
+  });
+
+  // Tab bar (móvil)
+  const tb = document.getElementById('tabbar');
+  tb.innerHTML = '';
+  TAB_MOVIL.forEach(tid=>{
+    const it = tid==='mas' ? {id:'mas', icon:'⋯', label:'Más'} : NAV_ITEMS.find(n=>n.id===tid);
+    const btn = document.createElement('button');
+    btn.className = 'tab-item'; btn.dataset.navId = it.id;
+    btn.innerHTML = `<span class="ic">${it.icon}</span><span>${it.label}</span>`;
+    btn.addEventListener('click', ()=> it.externo ? irApp(it.id.split(':')[1]) : irAVista(it.id==='mas'?'mas':it.id));
+    tb.appendChild(btn);
+  });
+
+  // Vista "Más" (móvil): el resto de accesos que no caben en el tab bar.
+  const masList = document.getElementById('mas-list');
+  const enMas = NAV_ITEMS.filter(it => !TAB_MOVIL.includes(it.id));
+  masList.innerHTML = enMas.map(it=>`
+    <div class="row" data-nav="${it.id}">
+      <div class="ic" style="background:var(--text-faint);">${it.icon}</div>
+      <div class="body"><div class="main">${it.label}</div></div>
+      <span class="chev">›</span>
+    </div>
+  `).join('');
+  masList.querySelectorAll('[data-nav]').forEach(r=>{
+    r.addEventListener('click', ()=>{
+      const it = NAV_ITEMS.find(n=>n.id===r.dataset.nav);
+      it.externo ? irApp(it.id.split(':')[1]) : irAVista(it.id);
+    });
+  });
+}
+
+function irAVista(id){
+  state.vista = id;
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  const map = { hoy:'view-hoy', mas:'view-mas', inventario:'view-inventario', config:'view-config' };
+  const target = document.getElementById(map[id] || 'view-hoy');
+  target.classList.add('on');
+  document.querySelectorAll('.nav-item, .tab-item').forEach(b=>{
+    b.classList.toggle('active', b.dataset.navId === id || (id==='mas' && b.dataset.navId==='mas'));
+  });
+  const titulos = { hoy:'Hoy', mas:'Más', inventario:'Inventario general', config:'Configuración' };
+  document.getElementById('topbar-title').textContent = titulos[id] || 'Hoy';
+  document.getElementById('views').scrollTop = 0;
+  if(id==='config'){ pintarConfigTodo(); }
+  if(id==='inventario'){ pintarInventario(); }
+}
+
+/* ============================================================
+   6. HOME "HOY" — accesos rápidos + widgets + navegación a apps
+   ============================================================ */
+const QUICK_ACTIONS = [
+  { id:'gastos', label:'Gasto', emoji:'💳', color:'var(--gastos)' },
+  { id:'comidas', label:'Comida', emoji:'🍽️', color:'var(--comidas)' },
+  { id:'ropa', label:'Outfit de hoy', emoji:'👕', color:'var(--ropa)' },
+  { id:'acuerdos', label:'Acuerdo', emoji:'🤝', color:'var(--acuerdos)' },
+  { id:'notas', label:'Nota', emoji:'✎', color:'var(--notas)' },
+];
+function pintarQuickActions(){
+  const cont = document.getElementById('quick-actions');
+  cont.innerHTML = QUICK_ACTIONS.map(a=>`
+    <button class="quick-btn" data-app="${a.id}">
+      <span class="circ" style="background:${a.color};">${a.emoji}</span>
+      <span>${a.label}</span>
+    </button>
+  `).join('');
+  cont.querySelectorAll('[data-app]').forEach(b=> b.addEventListener('click', ()=> irApp(b.dataset.app)));
+
+  const nav = document.getElementById('home-apps-nav');
+  nav.innerHTML = Object.keys(APP_LINKS).map(k=>{
+    const a = APP_LINKS[k];
+    return `<div class="row" data-app="${k}">
+      <div class="ic" style="background:${a.color};">${a.emoji}</div>
+      <div class="body"><div class="main">${a.nombre}</div></div>
+      <span class="chev">›</span>
+    </div>`;
+  }).join('');
+  nav.querySelectorAll('[data-app]').forEach(r=> r.addEventListener('click', ()=> irApp(r.dataset.app)));
+}
+
+function cargarConexiones(){
+  try{ state.conexiones = JSON.parse(localStorage.getItem(LS.conexiones)) || {}; } catch(e){ state.conexiones = {}; }
+  state.gasUrlPropia = localStorage.getItem(LS.gasUrlPropia) || '';
+  pintarQuickActions();
+  cargarHomeWidgets();
+}
+
+async function cargarHomeWidgets(){
+  const cont = document.getElementById('home-widgets');
+  cont.innerHTML = '<div class="empty-row">Cargando…</div>';
+  const piezas = [];
+
+  // Comida de hoy (Comidas → CALENDARIO + RECETAS)
+  piezas.push(construirWidgetComida());
+  // Acuerdos pendientes (Acuerdos → ACUERDOS)
+  piezas.push(construirWidgetAcuerdos());
+  // Últimas notas (Notas → getIdeas)
+  piezas.push(construirWidgetNotas());
+  // Gastos: sus datos viven detrás de sesión/contraseña propias de esa app,
+  // así que en la Fase 1 el Home solo enlaza — el resumen en vivo llega
+  // cuando se conecte la IA/rutas automáticas (Fase 4).
+  piezas.push(Promise.resolve({ icon:'💳', color:'var(--gastos)', titulo:'Próximos pagos', sub:'Ábrelo para ver tu Finanzas', accion:()=>irApp('gastos') }));
+
+  const resultados = await Promise.all(piezas.map(p => p.catch(()=>null)));
+  cont.innerHTML = '';
+  resultados.filter(Boolean).forEach(r=>{
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<div class="ic" style="background:${r.color};">${r.icon}</div>
+      <div class="body"><div class="main">${escapeHtml(r.titulo)}</div><div class="sub">${escapeHtml(r.sub)}</div></div>
+      <span class="chev">›</span>`;
+    row.addEventListener('click', r.accion);
+    cont.appendChild(row);
+  });
+  if(!cont.children.length) cont.innerHTML = '<div class="empty-row">Conecta tus apps en Configuración → Conexiones para ver tu resumen de hoy aquí.</div>';
+
+  pintarColapsables();
+}
+
+async function construirWidgetComida(){
+  const url = state.conexiones.comidas;
+  if(!url) return { icon:'🍽️', color:'var(--comidas)', titulo:'Comida de hoy', sub:'Conecta Comidas en Configuración', accion:()=>irAVista('config') };
+  const data = await callGAS(url, 'getAll');
+  const cal = (data.data && data.data.calendario) || [];
+  const recetas = (data.data && data.data.recetas) || [];
+  const hoy = hoyISO();
+  const deHoy = cal.filter(c => c.Fecha === hoy && !esVerdadero(c.Papelera));
+  if(!deHoy.length) return { icon:'🍽️', color:'var(--comidas)', titulo:'Comida de hoy', sub:'Nada planeado todavía', accion:()=>irApp('comidas') };
+  const nombres = deHoy.map(c=>{
+    if(c.TextoLibre) return c.TextoLibre;
+    const r = recetas.find(x=>x.ID===c.RecetaID);
+    return r ? r.Nombre : c.Slot;
+  }).filter(Boolean);
+  return { icon:'🍽️', color:'var(--comidas)', titulo:'Comida de hoy', sub: nombres.join(' · ') || (deHoy.length+' planeado(s)'), accion:()=>irApp('comidas') };
+}
+
+async function construirWidgetAcuerdos(){
+  const url = state.conexiones.acuerdos;
+  if(!url) return { icon:'🤝', color:'var(--acuerdos)', titulo:'Acuerdos pendientes', sub:'Conecta Acuerdos en Configuración', accion:()=>irAVista('config') };
+  const data = await callGAS(url, 'getAll');
+  const lista = (data.data && data.data.acuerdos) || [];
+  const pendientes = lista.filter(a => a.Estado === 'pendiente' && !esVerdadero(a.Papelera));
+  const sub = pendientes.length ? pendientes.slice(0,3).map(a=>a.Titulo).join(' · ') : 'Sin pendientes 🎉';
+  return { icon:'🤝', color:'var(--acuerdos)', titulo:pendientes.length + ' acuerdo(s) pendiente(s)', sub, accion:()=>irApp('acuerdos') };
+}
+
+async function construirWidgetNotas(){
+  const url = state.conexiones.notas;
+  if(!url) return { icon:'✎', color:'var(--notas)', titulo:'Últimas notas', sub:'Conecta Notas en Configuración', accion:()=>irAVista('config') };
+  const data = await callGAS(url, 'getIdeas');
+  const lista = data.ideas || data.data || (Array.isArray(data) ? data : []);
+  const ultimas = (Array.isArray(lista) ? lista : []).slice(-3).reverse();
+  const sub = ultimas.length ? ultimas.map(n => (n.Texto||n.texto||n.Titulo||'').toString().slice(0,40)).join(' · ') : 'Sin notas todavía';
+  return { icon:'✎', color:'var(--notas)', titulo:'Últimas notas', sub, accion:()=>irApp('notas') };
+}
+
+/* ---- Secciones colapsables: lista de compras, outfit de hoy, closet ---- */
+async function pintarColapsables(){
+  const cont = document.getElementById('home-collapsibles');
+  const secciones = [
+    { id:'compras', titulo:'Lista de compras', builder:construirColapsableCompras },
+    { id:'outfit', titulo:'Outfit de hoy', builder:construirColapsableOutfit },
+    { id:'closet', titulo:'Inventario / Closet', builder:construirColapsableCloset },
+  ];
+  cont.innerHTML = secciones.map(s=>`
+    <div class="collapse" id="col-${s.id}">
+      <div class="collapse-head" data-toggle="col-${s.id}">
+        <span class="t-headline">${s.titulo}</span>
+        <span style="display:flex; align-items:center; gap:8px;"><span class="badge" id="badge-${s.id}">…</span><span class="tw">›</span></span>
+      </div>
+      <div class="collapse-body" id="body-${s.id}"><div class="empty-row">Cargando…</div></div>
+    </div>
+  `).join('');
+  cont.querySelectorAll('[data-toggle]').forEach(h=>{
+    h.addEventListener('click', ()=> document.getElementById(h.dataset.toggle).classList.toggle('open'));
+  });
+  secciones.forEach(s => s.builder());
+}
+
+async function construirColapsableCompras(){
+  const url = state.conexiones.comidas;
+  const badge = document.getElementById('badge-compras'), body = document.getElementById('body-compras');
+  if(!url){ badge.textContent='—'; body.innerHTML = '<div class="empty-row">Conecta Comidas en Configuración</div>'; return; }
+  try{
+    const data = await callGAS(url, 'getAll');
+    const lista = ((data.data && data.data.lista_compras) || []).filter(x=>!esVerdadero(x.Comprado) && !esVerdadero(x.Papelera));
+    badge.textContent = lista.length;
+    body.innerHTML = lista.length ? lista.slice(0,8).map(i=>`<div class="row disabled"><div class="ic" style="background:var(--comidas);">🛒</div><div class="body"><div class="main">${escapeHtml(i.Nombre)}</div><div class="sub">${escapeHtml(i.Cantidad||'')} ${escapeHtml(i.Unidad||'')}</div></div></div>`).join('') : '<div class="empty-row">Sin pendientes</div>';
+  } catch(e){ badge.textContent='!'; body.innerHTML = '<div class="empty-row">No se pudo leer</div>'; }
+}
+async function construirColapsableOutfit(){
+  const url = state.conexiones.ropa;
+  const badge = document.getElementById('badge-outfit'), body = document.getElementById('body-outfit');
+  if(!url){ badge.textContent='—'; body.innerHTML = '<div class="empty-row">Conecta Closet en Configuración</div>'; return; }
+  try{
+    const data = await callGAS(url, 'getAll');
+    const usos = (data.data && data.data.usos) || [];
+    const prendas = (data.data && data.data.prendas) || [];
+    const hoy = hoyISO();
+    const usoHoy = usos.find(u=>u.Fecha===hoy);
+    let ids = [];
+    if(usoHoy){ try{ ids = JSON.parse(usoHoy.PrendaIDsJSON||'[]'); }catch(e){} }
+    badge.textContent = ids.length;
+    const nombres = ids.map(id=>{ const p = prendas.find(x=>x.ID===id); return p ? [p.Tipo,p.Color].filter(Boolean).join(' ') : null; }).filter(Boolean);
+    body.innerHTML = nombres.length ? nombres.map(n=>`<div class="row disabled"><div class="ic" style="background:var(--ropa);">👕</div><div class="body"><div class="main">${escapeHtml(n)}</div></div></div>`).join('') : '<div class="empty-row">Sin outfit registrado hoy</div>';
+  } catch(e){ badge.textContent='!'; body.innerHTML = '<div class="empty-row">No se pudo leer</div>'; }
+}
+async function construirColapsableCloset(){
+  const url = state.conexiones.ropa;
+  const badge = document.getElementById('badge-closet'), body = document.getElementById('body-closet');
+  const filas = [];
+  if(url){
+    try{
+      const data = await callGAS(url, 'getAll');
+      const prendas = ((data.data && data.data.prendas) || []).filter(p=>!esVerdadero(p.Papelera));
+      filas.push({ label:'Prendas en tu closet', n: prendas.length, accion:()=>irApp('ropa') });
+    } catch(e){ filas.push({ label:'Closet', n:'!', accion:()=>irApp('ropa') }); }
+  }
+  filas.push({ label:'Objetos en Inventario general', n: state.inventario.filter(i=>!esVerdadero(i.Papelera)).length, accion:()=>irAVista('inventario') });
+  badge.textContent = filas.reduce((a,f)=> a + (typeof f.n==='number'?f.n:0), 0);
+  body.innerHTML = filas.map(f=>`<div class="row" data-goto="1"><div class="ic" style="background:var(--general);">📦</div><div class="body"><div class="main">${f.label}</div></div><span class="chev">${f.n}</span></div>`).join('');
+  Array.from(body.children).forEach((el,i)=> el.addEventListener('click', filas[i].accion));
+}
+
+/* ============================================================
+   7. INVENTARIO GENERAL (backend propio del cascarón)
+   ============================================================ */
+async function asegurarBackendPropio(action, extra){
+  if(!state.gasUrlPropia){ throw new Error('Falta configurar tu propia Web App en Configuración → Conexiones'); }
+  return callGAS(state.gasUrlPropia, action, extra);
+}
+
+async function pintarInventario(){
+  const cont = document.getElementById('inv-list');
+  if(!state.gasUrlPropia){
+    cont.innerHTML = '<div class="empty-row">Configura la Web App propia de App Completa en Configuración → Conexiones para usar el Inventario General.</div>';
+    return;
+  }
+  cont.innerHTML = '<div class="empty-row">Cargando…</div>';
+  try{
+    const data = await asegurarBackendPropio('getAll');
+    state.inventario = (data.data.inventario_general || []).filter(i=>!esVerdadero(i.Papelera));
+    state.categoriasInventario = (data.data.categorias_inventario || []);
+    renderInventarioList();
+  } catch(e){ cont.innerHTML = `<div class="empty-row">No se pudo cargar: ${escapeHtml(e.message)}</div>`; }
+}
+function renderInventarioList(){
+  const cont = document.getElementById('inv-list');
+  if(!state.inventario.length){ cont.innerHTML = '<div class="empty-row">Sin objetos todavía — agrega el primero arriba</div>'; return; }
+  cont.innerHTML = state.inventario.map(i=>`
+    <div class="row" data-id="${i.ID}">
+      <div class="ic" style="background:var(--general);">📦</div>
+      <div class="body"><div class="main">${escapeHtml(i.Nombre)} ${i.Cantidad>1?('× '+i.Cantidad):''}</div>
+      <div class="sub">${escapeHtml(i.Categoria||'')}${i.Precio?(' · '+money(i.Precio)):''}${i.Ubicacion?(' · '+escapeHtml(i.Ubicacion)):''}</div></div>
+      <button class="icon-btn" data-del="${i.ID}">🗑</button>
+    </div>
+  `).join('');
+  cont.querySelectorAll('.row[data-id]').forEach(r=>{
+    r.addEventListener('click', (e)=>{ if(e.target.closest('[data-del]')) return; abrirModalInventario(r.dataset.id); });
+  });
+  cont.querySelectorAll('[data-del]').forEach(b=>{
+    b.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const item = state.inventario.find(x=>x.ID===b.dataset.del);
+      pedirConfirmacion('¿Eliminar "' + item.Nombre + '"?', 'Se manda a la papelera, se puede recuperar antes de 30 días.', async ()=>{
+        item.Papelera = true;
+        await asegurarBackendPropio('saveRow', { table:'INVENTARIO_GENERAL', row:item });
+        toast('Eliminado');
+        pintarInventario();
+      });
+    });
+  });
+}
+
+function pintarSelectCategoriasInventario(){
+  const sel = document.getElementById('inv-categoria');
+  const cats = state.categoriasInventario.length ? state.categoriasInventario : [{Nombre:'General',Emoji:'📦'}];
+  sel.innerHTML = cats.map(c=>`<option value="${escapeHtml(c.Nombre)}">${c.Emoji||''} ${escapeHtml(c.Nombre)}</option>`).join('');
+}
+
+document.getElementById('btn-inv-nuevo').addEventListener('click', ()=> abrirModalInventario(null));
+function abrirModalInventario(idv){
+  pintarSelectCategoriasInventario();
+  const item = idv ? state.inventario.find(x=>x.ID===idv) : null;
+  document.getElementById('modal-inv-titulo').textContent = item ? 'Editar objeto' : 'Nuevo objeto';
+  document.getElementById('inv-id').value = item ? item.ID : '';
+  document.getElementById('inv-nombre').value = item ? item.Nombre : '';
+  document.getElementById('inv-categoria').value = item ? item.Categoria : (state.categoriasInventario[0] ? state.categoriasInventario[0].Nombre : 'General');
+  document.getElementById('inv-caracteristicas').value = item ? item.Caracteristicas : '';
+  document.getElementById('inv-cantidad').value = item ? (item.Cantidad||1) : 1;
+  document.getElementById('inv-precio').value = item ? (item.Precio||'') : '';
+  document.getElementById('inv-ubicacion').value = item ? item.Ubicacion : '';
+  document.getElementById('inv-origen').value = item ? item.Origen : '';
+  openModal('modal-inv');
+}
+document.getElementById('inv-cancelar').addEventListener('click', ()=> closeModal('modal-inv'));
+document.getElementById('inv-guardar').addEventListener('click', async function(){
+  const nombre = document.getElementById('inv-nombre').value.trim();
+  if(!nombre){ toast('Ponle un nombre'); return; }
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Guardando…'});
+  const row = {
+    ID: document.getElementById('inv-id').value || undefined,
+    Nombre: nombre,
+    Categoria: document.getElementById('inv-categoria').value,
+    Caracteristicas: document.getElementById('inv-caracteristicas').value.trim(),
+    Cantidad: parseInt(document.getElementById('inv-cantidad').value)||1,
+    Precio: parseFloat(document.getElementById('inv-precio').value)||'',
+    Ubicacion: document.getElementById('inv-ubicacion').value.trim(),
+    Origen: document.getElementById('inv-origen').value.trim(),
+    Usuario: (state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre || '',
+    Papelera: false
+  };
+  try{
+    await asegurarBackendPropio('saveRow', { table:'INVENTARIO_GENERAL', row });
+    setBtnState(btn, 'saved', {saved:'Guardado'});
+    toast('Objeto guardado');
+    setTimeout(()=>{ closeModal('modal-inv'); setBtnState(btn,'idle',{idle:'Guardar'}); }, 500);
+    pintarInventario();
+  } catch(e){
+    setBtnState(btn, 'idle', {idle:'Guardar'});
+    toast('Error: ' + e.message);
+  }
+});
+
+/* ============================================================
+   8. CONFIGURACIÓN
+   ============================================================ */
+function pintarConfigTodo(){
+  document.getElementById('cfg-version-txt').textContent = VERSION_TXT;
+  pintarConfigUsuarios();
+  pintarConfigConexiones();
+  pintarConfigMejoras();
+}
+
+document.getElementById('btn-force-update').addEventListener('click', ()=>{
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.getRegistrations().then(rs=> rs.forEach(r=>r.unregister()));
+  }
+  caches && caches.keys && caches.keys().then(ks=> Promise.all(ks.map(k=>caches.delete(k)))).finally(()=> location.reload(true));
+  if(!('caches' in window)) location.reload(true);
+});
+
+/* ---- Conexiones ---- */
+const CONEXIONES_DEFS = [
+  { key:'self', label:'App Completa (esta app)', hint:'La Web App del backend nuevo (Inventario general, Mejoras…)' },
+  { key:'gastos', label:'Gastos', hint:'' },
+  { key:'comidas', label:'Comidas', hint:'' },
+  { key:'acuerdos', label:'Acuerdos', hint:'' },
+  { key:'ropa', label:'Closet', hint:'' },
+  { key:'notas', label:'Notas', hint:'' },
+];
+function pintarConfigConexiones(){
+  const cont = document.getElementById('cfg-conexiones-list');
+  cont.innerHTML = CONEXIONES_DEFS.map(c=>`
+    <div class="row disabled" style="flex-direction:column; align-items:stretch; gap:6px;">
+      <div class="t-sub" style="font-weight:600; color:var(--text);">${c.label}</div>
+      <input class="field" style="margin:0;" data-conn="${c.key}" placeholder="https://script.google.com/macros/s/..." value="${escapeHtml(c.key==='self' ? state.gasUrlPropia : (state.conexiones[c.key]||''))}">
+    </div>
+  `).join('');
+}
+document.getElementById('btn-cfg-guardar-conexiones').addEventListener('click', async function(){
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Guardando…'});
+  const inputs = document.querySelectorAll('[data-conn]');
+  const nuevasConexiones = {};
+  inputs.forEach(inp=>{
+    const key = inp.dataset.conn;
+    const val = inp.value.trim();
+    if(key==='self') state.gasUrlPropia = val;
+    else nuevasConexiones[key] = val;
+  });
+  state.conexiones = nuevasConexiones;
+  localStorage.setItem(LS.conexiones, JSON.stringify(state.conexiones));
+  localStorage.setItem(LS.gasUrlPropia, state.gasUrlPropia);
+  try{
+    if(state.gasUrlPropia) await callGAS(state.gasUrlPropia, 'init');
+    setBtnState(btn, 'saved', {saved:'Guardado'});
+    toast('Conexiones guardadas');
+    cargarHomeWidgets();
+  } catch(e){
+    setBtnState(btn, 'idle', {idle:'Guardar conexiones'});
+    toast('Se guardó, pero no se pudo verificar tu backend: ' + e.message);
+  }
+  setTimeout(()=>{ if(btn.dataset.state==='saved'){} }, 10);
+});
+// El botón vuelve a decir "Guardar" solo si se edita algo de nuevo.
+document.getElementById('cfg-conexiones-list').addEventListener('input', ()=>{
+  setBtnState(document.getElementById('btn-cfg-guardar-conexiones'), 'idle', {idle:'Guardar conexiones'});
+});
+
+/* ---- Mejoras ---- */
+function cargarMejorasCache(){
+  try{ state.mejoras = JSON.parse(localStorage.getItem(LS.mejorasCache)) || []; } catch(e){ state.mejoras = []; }
+}
+function guardarMejorasCache(){ localStorage.setItem(LS.mejorasCache, JSON.stringify(state.mejoras)); }
+
+async function pintarConfigMejoras(){
+  cargarMejorasCache();
+  renderMejorasList();
+  if(!state.gasUrlPropia) return;
+  try{
+    const data = await asegurarBackendPropio('getAll');
+    state.mejoras = (data.data.mejoras || []).sort((a,b)=> (b.Fecha||'').localeCompare(a.Fecha||''));
+    guardarMejorasCache();
+    renderMejorasList();
+  } catch(e){ /* se queda con la caché local si falla */ }
+}
+function renderMejorasList(){
+  const cont = document.getElementById('cfg-mejoras-list');
+  if(!state.mejoras.length){ cont.innerHTML = '<div class="empty-row">Sin mejoras anotadas todavía</div>'; return; }
+  cont.innerHTML = state.mejoras.map(m=>`
+    <div class="row disabled" data-id="${m.ID}">
+      <div class="body"><div class="main">${linkify(m.Texto)}</div><div class="sub">${escapeHtml(m.Fecha||'')}</div></div>
+      <button class="icon-btn" data-copiar="${m.ID}" style="margin-right:6px;">⧉</button>
+      <button class="icon-btn" data-eliminar="${m.ID}">🗑</button>
+    </div>
+  `).join('');
+  cont.querySelectorAll('.main').forEach(el=>{
+    el.addEventListener('click', function(){ hacerEditableMejora(this); });
+  });
+  cont.querySelectorAll('[data-copiar]').forEach(b=> b.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const m = state.mejoras.find(x=>x.ID===b.dataset.copiar);
+    navigator.clipboard && navigator.clipboard.writeText(m.Texto);
+    toast('Copiado');
+  }));
+  cont.querySelectorAll('[data-eliminar]').forEach(b=> b.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const m = state.mejoras.find(x=>x.ID===b.dataset.eliminar);
+    pedirConfirmacion('¿Eliminar esta mejora?', m.Texto, async ()=>{
+      state.mejoras = state.mejoras.filter(x=>x.ID!==m.ID);
+      guardarMejorasCache(); renderMejorasList();
+      try{ await asegurarBackendPropio('deleteRow', { table:'MEJORAS', id:m.ID }); } catch(err){}
+      toast('Eliminada');
+    });
+  }));
+}
+function hacerEditableMejora(el){
+  const fila = el.closest('.row');
+  const m = state.mejoras.find(x=>x.ID===fila.dataset.id);
+  const input = document.createElement('textarea');
+  input.className = 'field'; input.style.margin='4px 0'; input.value = m.Texto;
+  el.replaceWith(input);
+  input.focus();
+  const guardar = async ()=>{
+    const nuevo = input.value.trim();
+    if(nuevo && nuevo !== m.Texto){
+      m.Texto = nuevo;
+      guardarMejorasCache();
+      try{ await asegurarBackendPropio('saveRow', { table:'MEJORAS', row:m }); } catch(e){}
+    }
+    renderMejorasList();
+  };
+  input.addEventListener('blur', guardar);
+  input.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); input.blur(); } });
+}
+document.getElementById('btn-mejora-agregar').addEventListener('click', async function(){
+  const ta = document.getElementById('mejora-texto');
+  const texto = ta.value.trim();
+  if(!texto) return;
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Agregando…'});
+  const row = { ID: uid(), Texto: texto, Fecha: hoyISO() };
+  state.mejoras.unshift(row);
+  guardarMejorasCache(); renderMejorasList();
+  ta.value = '';
+  try{ await asegurarBackendPropio('saveRow', { table:'MEJORAS', row }); } catch(e){ toast('Se guardó local; falta conectar tu backend'); }
+  setBtnState(btn, 'idle', {idle:'Agregar'});
+});
+
+/* ---- Exportar respaldo ---- */
+document.getElementById('row-exportar').addEventListener('click', ()=>{
+  const payload = {
+    exportadoEl: new Date().toISOString(),
+    usuarios: state.usuarios.map(u=>({nombre:u.nombre})), // sin contraseñas
+    mejoras: state.mejoras,
+    inventarioGeneral: state.inventario
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'app-completa-respaldo-' + hoyISO() + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast('Respaldo descargado');
+});
+
+/* ============================================================
+   9. ARRANQUE
+   ============================================================ */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=> navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+iniciarLogin();
+
+})();
+</script>
+</body>
+</html>
