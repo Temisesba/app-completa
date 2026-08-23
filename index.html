@@ -6,7 +6,9 @@
 <title>App Completa</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f2f2f7">
-<!-- App Completa — v2 (Fase 2: horario, tareas, registro de tiempo/sueño) — GAS v2 -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- App Completa — v3 (Fase 3: Mapa de lugares, categorías editables) — GAS v3 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -202,6 +204,18 @@ textarea.field{resize:vertical; min-height:70px;}
   z-index:600; opacity:0; pointer-events:none; transition:all .25s ease; box-shadow:var(--shadow); max-width:88vw; text-align:center;
 }
 #toast.on{opacity:1; transform:translateX(-50%) translateY(0);}
+
+/* ---------- Mapa ---------- */
+.chip-row{display:flex; gap:8px; overflow-x:auto; padding:2px 2px 12px; -webkit-overflow-scrolling:touch;}
+.chip-row::-webkit-scrollbar{display:none;}
+.chip{
+  flex:0 0 auto; padding:8px 14px; border-radius:20px; border:1px solid var(--separator-op);
+  background:var(--bg-elev); color:var(--text-soft); font-size:13px; font-weight:600; cursor:pointer;
+}
+.chip.active{background:var(--general); color:#fff; border-color:var(--general);}
+#leaflet-map{height:280px; border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow); margin-bottom:14px; background:var(--separator-op);}
+.leaflet-popup-content-wrapper{background:var(--bg-elev); color:var(--text); border-radius:var(--radius-sm);}
+.leaflet-popup-tip{background:var(--bg-elev);}
 </style>
 </head>
 <body>
@@ -278,6 +292,15 @@ textarea.field{resize:vertical; min-height:70px;}
         <div class="grouped" id="inv-list"></div>
       </section>
 
+      <!-- ---------- MAPA ---------- -->
+      <section class="view" id="view-mapa">
+        <div class="section-title t-caption">Mapa</div>
+        <div class="chip-row" id="mapa-chips"></div>
+        <div id="leaflet-map"></div>
+        <button class="btn btn-primary" id="btn-lugar-nuevo" style="margin-bottom:14px;">+ Agregar lugar</button>
+        <div class="grouped" id="lugares-list"></div>
+      </section>
+
       <!-- ---------- CONFIGURACIÓN ---------- -->
       <section class="view" id="view-config">
         <div class="section-title t-caption">Versión</div>
@@ -291,6 +314,20 @@ textarea.field{resize:vertical; min-height:70px;}
         <div class="section-title t-caption">Usuarios</div>
         <div class="grouped" id="cfg-usuarios-list"></div>
         <button class="btn btn-secondary" id="btn-cfg-nuevo-usuario" style="margin-bottom:16px;">+ Agregar usuario</button>
+
+        <div class="section-title t-caption">Categorías de Inventario</div>
+        <div class="grouped" id="cfg-cat-inventario-list"></div>
+        <div class="card" style="display:flex; gap:8px; margin-bottom:16px;">
+          <input id="cat-inv-nueva" class="field" style="margin:0;" placeholder="Nueva categoría">
+          <button class="btn btn-secondary btn-sm" id="btn-cat-inv-agregar">Agregar</button>
+        </div>
+
+        <div class="section-title t-caption">Categorías de Mapa</div>
+        <div class="grouped" id="cfg-cat-lugares-list"></div>
+        <div class="card" style="display:flex; gap:8px; margin-bottom:16px;">
+          <input id="cat-lug-nueva" class="field" style="margin:0;" placeholder="Nueva categoría">
+          <button class="btn btn-secondary btn-sm" id="btn-cat-lug-agregar">Agregar</button>
+        </div>
 
         <div class="section-title t-caption">Conexiones</div>
         <p class="t-sub" style="padding:0 4px 12px;">Pega aquí la URL de la Web App de cada una de tus apps (Configuración → esa misma URL que ya tienes guardada en cada una). Con esto, el Home puede mostrarte datos reales.</p>
@@ -446,6 +483,29 @@ textarea.field{resize:vertical; min-height:70px;}
   </div>
 </div>
 
+<!-- ============ MODAL lugar (Mapa) ============ -->
+<div class="modal-overlay" id="modal-lugar">
+  <div class="modal modal-wrap">
+    <button class="close-x" data-close-modal="modal-lugar">✕</button>
+    <h2 class="t-title" id="modal-lugar-titulo">Nuevo lugar</h2>
+    <input type="hidden" id="lug-id">
+    <input type="hidden" id="lug-lat">
+    <input type="hidden" id="lug-lng">
+    <div style="margin-top:14px;">
+      <input id="lug-nombre" class="field" placeholder="Nombre (ej. Superama Insurgentes)">
+      <select id="lug-tipo" class="field"></select>
+      <button class="btn btn-secondary" id="lug-usar-ubicacion" style="margin-bottom:12px;">📍 Usar mi ubicación actual</button>
+      <p class="t-foot" id="lug-ubicacion-estado" style="margin:-6px 0 12px;">Sin ubicación capturada todavía</p>
+      <input id="lug-direccion" class="field" placeholder="Dirección (opcional)">
+      <textarea id="lug-notas" class="field" placeholder="Notas (opcional)"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="lug-cancelar">Cancelar</button>
+      <button class="btn btn-primary" id="lug-guardar">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -455,7 +515,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Dos — horario, tareas y registro de sueño';
+const VERSION_TXT = 'Tres — mapa de lugares y categorías editables';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -475,8 +535,10 @@ const LS = {
 let state = {
   usuarios: [], usuarioActivo: null, conexiones: {}, gasUrlPropia:'',
   mejoras: [], inventario: [], categoriasInventario: [], vista:'hoy',
-  horario: [], tareas: [], registros: []
+  horario: [], tareas: [], registros: [],
+  lugares: [], categoriasLugares: [], filtroLugar: 'todos'
 };
+let mapaLeaflet = null, mapaMarkersLayer = null;
 
 /* ============================================================
    2. HELPERS GENERALES
@@ -759,6 +821,7 @@ const NAV_ITEMS = [
   { id:'app:comidas', icon:'🍽️', label:'Comidas', tab:true, externo:true },
   { id:'app:ropa', icon:'👕', label:'Closet', tab:false, externo:true },
   { id:'inventario', icon:'📦', label:'Inventario', tab:false },
+  { id:'mapa', icon:'🗺️', label:'Mapa', tab:false },
   { id:'app:acuerdos', icon:'🤝', label:'Acuerdos', tab:false, externo:true },
   { id:'app:notas', icon:'✎', label:'Notas', tab:false, externo:true },
   { id:'config', icon:'⚙️', label:'Config', tab:false },
@@ -818,17 +881,18 @@ function construirNav(){
 function irAVista(id){
   state.vista = id;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
-  const map = { hoy:'view-hoy', mas:'view-mas', inventario:'view-inventario', config:'view-config' };
+  const map = { hoy:'view-hoy', mas:'view-mas', inventario:'view-inventario', mapa:'view-mapa', config:'view-config' };
   const target = document.getElementById(map[id] || 'view-hoy');
   target.classList.add('on');
   document.querySelectorAll('.nav-item, .tab-item').forEach(b=>{
     b.classList.toggle('active', b.dataset.navId === id || (id==='mas' && b.dataset.navId==='mas'));
   });
-  const titulos = { hoy:'Hoy', mas:'Más', inventario:'Inventario general', config:'Configuración' };
+  const titulos = { hoy:'Hoy', mas:'Más', inventario:'Inventario general', mapa:'Mapa', config:'Configuración' };
   document.getElementById('topbar-title').textContent = titulos[id] || 'Hoy';
   document.getElementById('views').scrollTop = 0;
   if(id==='config'){ pintarConfigTodo(); }
   if(id==='inventario'){ pintarInventario(); }
+  if(id==='mapa'){ pintarMapa(); }
 }
 
 /* ============================================================
@@ -1378,6 +1442,149 @@ document.getElementById('inv-guardar').addEventListener('click', async function(
 });
 
 /* ============================================================
+   7.5 MAPA (Fase 3)
+   ============================================================ */
+function initLeafletMapSiHaceFalta(){
+  if(mapaLeaflet) return;
+  mapaLeaflet = L.map('leaflet-map').setView([19.4326, -99.1332], 12); // CDMX de arranque, se recentra con geolocalización
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap',
+    maxZoom: 19
+  }).addTo(mapaLeaflet);
+  mapaMarkersLayer = L.layerGroup().addTo(mapaLeaflet);
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition((pos)=>{
+      mapaLeaflet.setView([pos.coords.latitude, pos.coords.longitude], 14);
+    }, ()=>{ /* sin permiso o sin señal: se queda en CDMX */ }, { timeout:8000 });
+  }
+}
+
+async function pintarMapa(){
+  initLeafletMapSiHaceFalta();
+  setTimeout(()=> mapaLeaflet.invalidateSize(), 50); // el mapa estaba oculto (display:none) al crearse
+  if(!state.gasUrlPropia){
+    document.getElementById('lugares-list').innerHTML = '<div class="empty-row">Configura tu Web App propia en Configuración → Conexiones</div>';
+    return;
+  }
+  document.getElementById('lugares-list').innerHTML = '<div class="empty-row">Cargando…</div>';
+  try{
+    const data = await asegurarBackendPropio('getAll');
+    state.lugares = (data.data.mapa_lugares || []).filter(l=>!esVerdadero(l.Papelera));
+    state.categoriasLugares = (data.data.categorias_lugares || []).filter(c=>!esVerdadero(c.Papelera));
+    renderChipsMapa();
+    renderMarcadoresMapa();
+    renderListaLugares();
+  } catch(e){
+    document.getElementById('lugares-list').innerHTML = `<div class="empty-row">No se pudo cargar: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderChipsMapa(){
+  const cont = document.getElementById('mapa-chips');
+  const chips = [{Nombre:'todos', Emoji:'📍', label:'Todos'}, ...state.categoriasLugares.map(c=>({Nombre:c.Nombre, Emoji:c.Emoji, label:c.Nombre}))];
+  cont.innerHTML = chips.map(c=>`<button class="chip ${state.filtroLugar===c.Nombre?'active':''}" data-filtro="${escapeHtml(c.Nombre)}">${c.Emoji||''} ${escapeHtml(c.label)}</button>`).join('');
+  cont.querySelectorAll('[data-filtro]').forEach(b=> b.addEventListener('click', ()=>{
+    state.filtroLugar = b.dataset.filtro;
+    renderChipsMapa(); renderMarcadoresMapa(); renderListaLugares();
+  }));
+}
+function lugaresFiltrados(){
+  return state.filtroLugar==='todos' ? state.lugares : state.lugares.filter(l=>l.Tipo===state.filtroLugar);
+}
+function renderMarcadoresMapa(){
+  if(!mapaMarkersLayer) return;
+  mapaMarkersLayer.clearLayers();
+  lugaresFiltrados().forEach(l=>{
+    if(!l.Lat || !l.Lng) return;
+    const cat = state.categoriasLugares.find(c=>c.Nombre===l.Tipo);
+    const marker = L.marker([parseFloat(l.Lat), parseFloat(l.Lng)]).addTo(mapaMarkersLayer);
+    const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${l.Lat},${l.Lng}`;
+    marker.bindPopup(`<b>${(cat&&cat.Emoji)||'📍'} ${escapeHtml(l.Nombre)}</b><br>${escapeHtml(l.Direccion||'')}<br><a href="${dirUrl}" target="_blank" rel="noopener">Cómo llegar</a>`);
+  });
+}
+function renderListaLugares(){
+  const cont = document.getElementById('lugares-list');
+  const lista = lugaresFiltrados();
+  if(!lista.length){ cont.innerHTML = '<div class="empty-row">Sin lugares guardados — agrega el primero arriba</div>'; return; }
+  cont.innerHTML = lista.map(l=>{
+    const cat = state.categoriasLugares.find(c=>c.Nombre===l.Tipo);
+    return `<div class="row" data-id="${l.ID}">
+      <div class="ic" style="background:var(--general);">${(cat&&cat.Emoji)||'📍'}</div>
+      <div class="body"><div class="main">${escapeHtml(l.Nombre)}</div><div class="sub">${escapeHtml(l.Tipo||'')}${l.Direccion?(' · '+escapeHtml(l.Direccion)):''}</div></div>
+      <button class="icon-btn" data-del="${l.ID}">🗑</button>
+    </div>`;
+  }).join('');
+  cont.querySelectorAll('.row[data-id]').forEach(r=> r.addEventListener('click', (e)=>{ if(e.target.closest('[data-del]')) return; abrirModalLugar(r.dataset.id); }));
+  cont.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const l = state.lugares.find(x=>x.ID===b.dataset.del);
+    pedirConfirmacion('¿Eliminar "'+l.Nombre+'"?', 'Se manda a la papelera.', async ()=>{
+      l.Papelera = true;
+      await asegurarBackendPropio('saveRow', { table:'MAPA_LUGARES', row:l });
+      toast('Eliminado');
+      pintarMapa();
+    });
+  }));
+}
+document.getElementById('btn-lugar-nuevo').addEventListener('click', ()=> abrirModalLugar(null));
+function pintarSelectTipoLugar(){
+  const sel = document.getElementById('lug-tipo');
+  const cats = state.categoriasLugares.length ? state.categoriasLugares : [{Nombre:'Otro',Emoji:'📍'}];
+  sel.innerHTML = cats.map(c=>`<option value="${escapeHtml(c.Nombre)}">${c.Emoji||''} ${escapeHtml(c.Nombre)}</option>`).join('');
+}
+function abrirModalLugar(idv){
+  pintarSelectTipoLugar();
+  const l = idv ? state.lugares.find(x=>x.ID===idv) : null;
+  document.getElementById('modal-lugar-titulo').textContent = l ? 'Editar lugar' : 'Nuevo lugar';
+  document.getElementById('lug-id').value = l ? l.ID : '';
+  document.getElementById('lug-nombre').value = l ? l.Nombre : '';
+  document.getElementById('lug-tipo').value = l ? l.Tipo : (state.categoriasLugares[0]?state.categoriasLugares[0].Nombre:'Otro');
+  document.getElementById('lug-direccion').value = l ? (l.Direccion||'') : '';
+  document.getElementById('lug-notas').value = l ? (l.Notas||'') : '';
+  document.getElementById('lug-lat').value = l ? (l.Lat||'') : '';
+  document.getElementById('lug-lng').value = l ? (l.Lng||'') : '';
+  document.getElementById('lug-ubicacion-estado').textContent = (l && l.Lat) ? ('Ubicación capturada ✓ ('+parseFloat(l.Lat).toFixed(4)+', '+parseFloat(l.Lng).toFixed(4)+')') : 'Sin ubicación capturada todavía';
+  openModal('modal-lugar');
+}
+document.getElementById('lug-usar-ubicacion').addEventListener('click', function(){
+  if(!navigator.geolocation){ toast('Tu navegador no da ubicación'); return; }
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Ubicando…'});
+  navigator.geolocation.getCurrentPosition((pos)=>{
+    document.getElementById('lug-lat').value = pos.coords.latitude;
+    document.getElementById('lug-lng').value = pos.coords.longitude;
+    document.getElementById('lug-ubicacion-estado').textContent = 'Ubicación capturada ✓ ('+pos.coords.latitude.toFixed(4)+', '+pos.coords.longitude.toFixed(4)+')';
+    setBtnState(btn, 'idle', {idle:'📍 Usar mi ubicación actual'});
+    toast('Ubicación capturada');
+  }, (err)=>{
+    setBtnState(btn, 'idle', {idle:'📍 Usar mi ubicación actual'});
+    toast('No se pudo obtener tu ubicación: ' + err.message);
+  }, { timeout:10000 });
+});
+document.getElementById('lug-cancelar').addEventListener('click', ()=> closeModal('modal-lugar'));
+document.getElementById('lug-guardar').addEventListener('click', async function(){
+  const nombre = document.getElementById('lug-nombre').value.trim();
+  if(!nombre){ toast('Ponle un nombre'); return; }
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Guardando…'});
+  const row = {
+    ID: document.getElementById('lug-id').value || undefined,
+    Nombre: nombre, Tipo: document.getElementById('lug-tipo').value,
+    Lat: document.getElementById('lug-lat').value, Lng: document.getElementById('lug-lng').value,
+    Direccion: document.getElementById('lug-direccion').value.trim(),
+    Notas: document.getElementById('lug-notas').value.trim(),
+    Papelera: false
+  };
+  try{
+    await asegurarBackendPropio('saveRow', { table:'MAPA_LUGARES', row });
+    toast('Guardado');
+    closeModal('modal-lugar');
+    pintarMapa();
+  } catch(e){ toast('Error: '+e.message); }
+  setBtnState(btn, 'idle', {idle:'Guardar'});
+});
+
+/* ============================================================
    8. CONFIGURACIÓN
    ============================================================ */
 function pintarConfigTodo(){
@@ -1385,7 +1592,104 @@ function pintarConfigTodo(){
   pintarConfigUsuarios();
   pintarConfigConexiones();
   pintarConfigMejoras();
+  pintarConfigCategorias();
 }
+
+/* ---- Categorías editables (Inventario General y Mapa) — regla 12: se
+   pueden agregar/renombrar/archivar desde Configuración, nada quemado en
+   el HTML. Al renombrar, se actualizan los registros que ya la usaban
+   (Inventario General guarda el Nombre de la categoría, no un ID, así que
+   sin este paso quedarían huérfanos). Al archivar, solo se avisa cuántos
+   registros la usan — igual se archiva (los registros viejos conservan el
+   nombre, solo deja de ofrecerse para capturas nuevas). ---- */
+async function pintarConfigCategorias(){
+  if(!state.gasUrlPropia) return;
+  try{
+    const data = await asegurarBackendPropio('getAll');
+    state.categoriasInventario = data.data.categorias_inventario || [];
+    state.categoriasLugares = data.data.categorias_lugares || [];
+    state.inventario = (data.data.inventario_general || []).filter(i=>!esVerdadero(i.Papelera));
+    state.lugares = (data.data.mapa_lugares || []).filter(l=>!esVerdadero(l.Papelera));
+  } catch(e){ /* si falla, se usa lo que ya hubiera en memoria */ }
+  renderCategoriasEditor('cfg-cat-inventario-list', state.categoriasInventario, 'CATEGORIAS_INVENTARIO', state.inventario, 'Categoria', pintarConfigCategorias);
+  renderCategoriasEditor('cfg-cat-lugares-list', state.categoriasLugares, 'CATEGORIAS_LUGARES', state.lugares, 'Tipo', pintarConfigCategorias);
+}
+function renderCategoriasEditor(containerId, categorias, tabla, registrosQueUsan, campoUso, onChange){
+  const cont = document.getElementById(containerId);
+  const activas = categorias.filter(c=>!esVerdadero(c.Papelera)).sort((a,b)=>(a.Orden||0)-(b.Orden||0));
+  if(!activas.length){ cont.innerHTML = '<div class="empty-row">Sin categorías — agrega la primera abajo</div>'; return; }
+  cont.innerHTML = activas.map(c=>`
+    <div class="row disabled">
+      <span style="font-size:18px;">${c.Emoji||'📌'}</span>
+      <div class="body"><input class="field" style="margin:0;" data-rename="${c.ID}" value="${escapeHtml(c.Nombre)}"></div>
+      <button class="icon-btn" data-archivar="${c.ID}">🗑</button>
+    </div>
+  `).join('');
+  cont.querySelectorAll('[data-rename]').forEach(inp=>{
+    inp.addEventListener('blur', async ()=>{
+      const c = categorias.find(x=>x.ID===inp.dataset.rename);
+      const nuevo = inp.value.trim();
+      if(!nuevo || nuevo===c.Nombre) return;
+      const anterior = c.Nombre;
+      c.Nombre = nuevo;
+      try{
+        await asegurarBackendPropio('saveRow', { table:tabla, row:c });
+        const usados = registrosQueUsan.filter(r=>r[campoUso]===anterior);
+        for(const r of usados){
+          r[campoUso] = nuevo;
+          const tablaDestino = tabla==='CATEGORIAS_INVENTARIO' ? 'INVENTARIO_GENERAL' : 'MAPA_LUGARES';
+          await asegurarBackendPropio('saveRow', { table:tablaDestino, row:r });
+        }
+        toast(usados.length ? `Renombrado y actualizado en ${usados.length} registro(s)` : 'Renombrado');
+        if(onChange) onChange();
+      } catch(e){ toast('Error: '+e.message); }
+    });
+  });
+  cont.querySelectorAll('[data-archivar]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const c = categorias.find(x=>x.ID===b.dataset.archivar);
+      const enUso = registrosQueUsan.filter(r=>r[campoUso]===c.Nombre).length;
+      pedirConfirmacion(
+        '¿Archivar "'+c.Nombre+'"?',
+        enUso ? `La usan ${enUso} registro(s) — seguirán conservando este nombre, solo deja de ofrecerse para capturas nuevas.` : 'No la usa ningún registro todavía.',
+        async ()=>{
+          c.Papelera = true;
+          await asegurarBackendPropio('saveRow', { table:tabla, row:c });
+          toast('Archivada');
+          if(onChange) onChange();
+        }
+      );
+    });
+  });
+}
+document.getElementById('btn-cat-inv-agregar').addEventListener('click', async function(){
+  const inp = document.getElementById('cat-inv-nueva');
+  const nombre = inp.value.trim();
+  if(!nombre) return;
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Agregando…'});
+  try{
+    await asegurarBackendPropio('saveRow', { table:'CATEGORIAS_INVENTARIO', row:{ Nombre:nombre, Emoji:'📌', Orden:state.categoriasInventario.length, Papelera:false } });
+    inp.value = '';
+    toast('Categoría agregada');
+    pintarConfigCategorias();
+  } catch(e){ toast('Error: '+e.message); }
+  setBtnState(btn, 'idle', {idle:'Agregar'});
+});
+document.getElementById('btn-cat-lug-agregar').addEventListener('click', async function(){
+  const inp = document.getElementById('cat-lug-nueva');
+  const nombre = inp.value.trim();
+  if(!nombre) return;
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Agregando…'});
+  try{
+    await asegurarBackendPropio('saveRow', { table:'CATEGORIAS_LUGARES', row:{ Nombre:nombre, Emoji:'📌', Orden:state.categoriasLugares.length, Papelera:false } });
+    inp.value = '';
+    toast('Categoría agregada');
+    pintarConfigCategorias();
+  } catch(e){ toast('Error: '+e.message); }
+  setBtnState(btn, 'idle', {idle:'Agregar'});
+});
 
 document.getElementById('btn-force-update').addEventListener('click', ()=>{
   if('serviceWorker' in navigator){
