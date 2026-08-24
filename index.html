@@ -280,7 +280,7 @@ body.chat-abierto .tabbar{display:none;}
 
         <div class="section-title t-caption">Tu horario de hoy</div>
         <div class="grouped" id="horario-list"></div>
-        <button class="btn btn-text btn-sm" onclick="irApp('notas')" style="margin-bottom:16px;">Editar rutina en Organizador →</button>
+        <button class="btn btn-text btn-sm" id="btn-editar-rutina" style="margin-bottom:16px;">Editar rutina en Organizador →</button>
 
         <div class="section-title t-caption">Tareas</div>
         <div class="grouped" id="tareas-list"></div>
@@ -1230,6 +1230,7 @@ function renderHorarioDesdeOrganizador(){
   `).join('');
 }
 function habitoLigadoAHorario(habitoId, horario){ return (horario||[]).some(h=>h.HabitoID===habitoId); }
+document.getElementById('btn-editar-rutina').addEventListener('click', ()=> irApp('notas'));
 
 /* ---- Tareas (notas de Organizador en el cuaderno "Tareas") ---- */
 function renderTareasDesdeOrganizador(){
