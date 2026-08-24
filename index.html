@@ -1313,35 +1313,34 @@ async function renderHorarioDesdeOrganizador(){
   // Se desplaza a la hora actual solo la primera vez que carga el Home —
   // así se ve de entrada "dónde vas" sin tener que buscarlo, pero no salta
   // la pantalla sola cada vez que se marca algo como cumplido (eso también
-  // vuelve a llamar a esta función). Va ANTES de enganchar los botones de
-  // check (abajo) a propósito: así nunca queda atrás de nada que pueda
-  // fallar.
-  if(!horarioYaCentrado){
-    horarioYaCentrado = true;
-    const ahora = horaCorta(new Date().toTimeString());
-    let idxActual = -1;
-    items.forEach((it,i)=>{ if(it.hora && it.hora<=ahora) idxActual = i; });
-    if(idxActual>=0){
-      const idHora = `hora-actual-${idxActual}`;
-      const fila = cont.querySelector(`[data-fila="${idxActual}"]`);
-      if(fila){
-        fila.id = idHora;
-        // Reintenta varias veces: otros renders que llegan después
-        // (Tareas, widgets, colapsables) pueden mover el contenido y
-        // cancelar el primer intento antes de que se note.
-        [200, 500, 900, 1500, 2500].forEach(ms => setTimeout(()=>{
-          const el = document.getElementById(idHora);
-          if(el) el.scrollIntoView({ block:'center', behavior:'auto' });
-        }, ms));
+  // vuelve a llamar a esta función). Todo en try/catch propio: un fallo
+  // aquí (dato inesperado, etc.) nunca debe tumbar el resto del render.
+  try{
+    if(!window.__acHorarioYaCentrado){
+      window.__acHorarioYaCentrado = true;
+      const ahora = horaCorta(new Date().toTimeString());
+      let idxActual = -1;
+      for(let i=0;i<items.length;i++){ if(items[i].hora && items[i].hora<=ahora) idxActual = i; }
+      if(idxActual>=0){
+        const idHora = 'hora-actual-'+idxActual;
+        const fila = cont.querySelector('[data-fila="'+idxActual+'"]');
+        if(fila){
+          fila.id = idHora;
+          [200, 500, 900, 1500, 2500].forEach(function(ms){
+            setTimeout(function(){
+              const el = document.getElementById(idHora);
+              if(el) el.scrollIntoView({ block:'center', behavior:'auto' });
+            }, ms);
+          });
+        }
       }
     }
-  }
+  } catch(e){}
 
   try{
     cont.querySelectorAll('[data-toggle]:not([data-toggle=""])').forEach(b=> b.addEventListener('click', ()=> toggleHorarioHabito(items[parseInt(b.dataset.toggle)])));
-  } catch(e){ /* no debe bloquear el resto de la pantalla si esto falla */ }
+  } catch(e){}
 }
-let horarioYaCentrado = false;
 async function toggleHorarioHabito(it){
   const tabla = it.tipo==='horario' ? 'HORARIO_LOG' : 'HABITO_LOG';
   const campoId = it.tipo==='horario' ? 'HorarioID' : 'HabitoID';
