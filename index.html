@@ -1319,11 +1319,16 @@ async function renderHorarioDesdeOrganizador(){
   // 'smooth' — con 'smooth' otros renders async (widgets, colapsables) que
   // siguen llegando alteran el layout a medio camino y cancelan la
   // animación antes de terminar.
+  window.__debugCount = (window.__debugCount||0)+1;
+  window.__debugLog = (window.__debugLog||[]);
+  window.__debugLog.push({n: window.__debugCount, horarioYaCentrado, itemsLen: items.length});
   if(!horarioYaCentrado){
     horarioYaCentrado = true;
     const ahora = horaCorta(new Date().toTimeString());
     let idxActual = -1;
     items.forEach((it,i)=>{ if(it.hora && it.hora<=ahora) idxActual = i; });
+    window.__debugLog[window.__debugLog.length-1].idxActual = idxActual;
+    window.__debugLog[window.__debugLog.length-1].ahora = ahora;
     if(idxActual>=0){
       const idHora = `hora-actual-${idxActual}`;
       const fila = cont.querySelector(`[data-fila="${idxActual}"]`);
