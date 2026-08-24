@@ -1259,6 +1259,7 @@ async function fetchEventosGoogleHoy(){
 
 const DIA_CODES = ['D','L','M','X','J','V','S']; // getDay(): 0=Dom..6=Sáb, igual que Organizador
 async function renderHorarioDesdeOrganizador(){
+  window.__contadorRenderHorario = (window.__contadorRenderHorario||0) + 1;
   const cont = document.getElementById('horario-list');
   const d = state.organizadorData || {};
   const hoy = new Date();
@@ -1311,8 +1312,8 @@ async function renderHorarioDesdeOrganizador(){
       </div>
     </div>
   `).join('');
-  cont.querySelectorAll('[data-toggle]:not([data-toggle=""])').forEach(b=> b.addEventListener('click', ()=> toggleHorarioHabito(items[parseInt(b.dataset.toggle)])));
   cont.insertAdjacentHTML('beforeend', '<div id="marca-debug-viva">MARCA-VIVA-'+Date.now()+'</div>');
+  cont.querySelectorAll('[data-toggle]:not([data-toggle=""])').forEach(b=> b.addEventListener('click', ()=> toggleHorarioHabito(items[parseInt(b.dataset.toggle)])));
 
   // Se desplaza a la hora actual solo la primera vez que carga el Home —
   // así se ve de entrada "dónde vas" sin tener que buscarlo, pero no salta
