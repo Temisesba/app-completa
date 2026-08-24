@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<!-- App Completa — v7 (Google Calendar en Tu horario de hoy) — GAS v4 -->
+<!-- App Completa — v8 (Horario: planeado vs. real + notas por hora, se retiró el Registro propio) — GAS v4 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -291,10 +291,6 @@ body.chat-abierto .tabbar{display:none;}
         <div class="grouped" id="tareas-list"></div>
         <button class="btn btn-secondary btn-sm" id="btn-tarea-agregar" style="margin-bottom:16px;">+ Tarea</button>
 
-        <div class="section-title t-caption">Registro de tiempo y sueño</div>
-        <div class="grouped" id="registro-list"></div>
-        <button class="btn btn-secondary btn-sm" id="btn-registro-agregar" style="margin-bottom:16px;">+ Registrar</button>
-
         <div class="section-title t-caption">Resumen de hoy</div>
         <div id="home-widgets" class="grouped"></div>
 
@@ -496,34 +492,6 @@ body.chat-abierto .tabbar{display:none;}
   </div>
 </div>
 
-<!-- ============ MODAL registro de tiempo/sueño ============ -->
-<div class="modal-overlay" id="modal-registro">
-  <div class="modal modal-wrap">
-    <button class="close-x" data-close-modal="modal-registro">✕</button>
-    <h2 class="t-title">Registrar</h2>
-    <input type="hidden" id="reg-id">
-    <div style="display:flex; gap:10px; margin:14px 0;">
-      <button class="btn btn-secondary" id="reg-tipo-sueno" style="flex:1;">🌙 Sueño</button>
-      <button class="btn btn-secondary" id="reg-tipo-actividad" style="flex:1;">⏱️ Actividad</button>
-    </div>
-    <div id="reg-titulo-wrap" class="hidden">
-      <input id="reg-titulo" class="field" placeholder="¿Qué actividad? (ej. Ejercicio, Estudio)">
-    </div>
-    <div>
-      <input id="reg-fecha" class="field" type="date">
-      <div style="display:flex; gap:10px;">
-        <input id="reg-inicio" class="field" type="time" placeholder="Inicio">
-        <input id="reg-fin" class="field" type="time" placeholder="Fin">
-      </div>
-      <textarea id="reg-notas" class="field" placeholder="Notas (opcional)"></textarea>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" id="reg-cancelar">Cancelar</button>
-      <button class="btn btn-primary" id="reg-guardar">Guardar</button>
-    </div>
-  </div>
-</div>
-
 <!-- ============ MODAL lugar (Mapa) ============ -->
 <div class="modal-overlay" id="modal-lugar">
   <div class="modal modal-wrap">
@@ -583,7 +551,7 @@ body.chat-abierto .tabbar{display:none;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Siete — Google Calendar en Tu horario de hoy';
+const VERSION_TXT = 'Ocho — horario planeado vs. real, con notas por hora';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -986,7 +954,6 @@ const QUICK_ACTIONS = [
   { id:'comidas', label:'Comida', emoji:'🍽️', color:'var(--comidas)', tipo:'app', hash:'#nueva-comida' },
   { id:'notas', label:'Nota', emoji:'📔', color:'var(--notas)', tipo:'app' },
   { id:'tarea', label:'Tarea', emoji:'📝', color:'var(--general)', tipo:'tarea' },
-  { id:'registro', label:'Sueño/tiempo', emoji:'⏱️', color:'var(--acuerdos)', tipo:'registro' },
   { id:'acuerdos', label:'Acuerdo', emoji:'🤝', color:'var(--acuerdos)', tipo:'app' },
   { id:'ropa', label:'Outfit de hoy', emoji:'👕', color:'var(--ropa)', tipo:'app' },
 ];
@@ -1002,7 +969,6 @@ function pintarQuickActions(){
     const a = QUICK_ACTIONS.find(x=>x.id===b.dataset.app);
     if(a.tipo==='app') irApp(a.id, a.hash);
     else if(a.tipo==='tarea') abrirModalTarea(null);
-    else if(a.tipo==='registro') abrirModalRegistro(null);
     else if(a.tipo==='ia'){ irAVista('ia'); nuevoChatIA(); }
   }));
 
@@ -1172,8 +1138,6 @@ function ayerISO(){ const d=new Date(); d.setDate(d.getDate()-1); return d.getFu
 function horaCorta(h){ return (h||'').toString().slice(0,5); }
 
 async function cargarHorarioTareasRegistro(){
-  cargarRegistroPropio(); // registro de tiempo/sueño: sigue en el backend propio del cascarón, sin cambios
-
   const contH = document.getElementById('horario-list'), contT = document.getElementById('tareas-list');
   if(!state.conexiones.notas || !state.organizadorSheetId){
     const msg = '<div class="empty-row">Conecta Organizador (URL + ID de Sheet) en Configuración → Conexiones</div>';
@@ -1192,21 +1156,15 @@ async function cargarHorarioTareasRegistro(){
     contH.innerHTML = msg; contT.innerHTML = msg;
   }
 }
-async function cargarRegistroPropio(){
-  const contR = document.getElementById('registro-list');
-  if(!state.gasUrlPropia){ contR.innerHTML = '<div class="empty-row">Configura tu Web App propia en Configuración → Conexiones</div>'; return; }
-  contR.innerHTML = '<div class="empty-row">Cargando…</div>';
-  try{
-    const data = await asegurarBackendPropio('getAll');
-    state.registros = (data.data.registro_tiempo_sueno || []).filter(r=>!esVerdadero(r.Papelera));
-    renderRegistroList();
-  } catch(e){ contR.innerHTML = `<div class="empty-row">No se pudo cargar: ${escapeHtml(e.message)}</div>`; }
-}
 
-/* ---- Horario de hoy + Hábitos (traídos de Organizador — es donde Temis ya
-   lleva su rutina real, ligada a Google Calendar; App_Completa no duplica
-   ese dato, solo lo muestra). Editar la rutina se sigue haciendo en
-   Organizador — aquí es de solo lectura para no arriesgar su formato. ---- */
+/* ---- Horario de hoy + Hábitos + "registro" (traídos de Organizador — es
+   donde Temis ya lleva su rutina real, ligada a Google Calendar). Cada
+   franja/hábito muestra hora planeada vs. "Real: HH:mm" (el momento real en
+   que se marcó cumplido — mismo mecanismo que usa Organizador para
+   HORARIO_LOG/HABITO_LOG, no una tabla de "registro" aparte) y las notas
+   que se tomaron dentro de esa hora, para ver qué tan cerca quedó lo
+   realizado de lo planeado. Marcar/desmarcar cumplido SÍ escribe en
+   Organizador (antes esta sección era de solo lectura). ---- */
 /* ---- Google Calendar (mismo patrón y mismas llaves de localStorage que
    Organizador — 'org_gcal_token'/'org_gcal_refresh' — porque App_Completa y
    Organizador viven en el MISMO origen (temisesba.github.io), así que
@@ -1305,29 +1263,68 @@ async function renderHorarioDesdeOrganizador(){
   const hoy = new Date();
   const code = DIA_CODES[hoy.getDay()];
   const hoyStr = hoy.toDateString();
+  const horaRealDe = (lista, campoId, id) => {
+    const log = (lista||[]).find(l=>l[campoId]===id && new Date(l.Fecha).toDateString()===hoyStr);
+    return log ? { horaReal: horaCorta(new Date(log.Fecha).toTimeString()), logId: log.ID } : { horaReal:'', logId:null };
+  };
+
   const slots = (d.horario||[]).filter(h=> String(h.Dias||'').split(',').includes(code)).map(h=>{
     const ov = (d.horario_override||[]).find(o=>o.HorarioID===h.ID && new Date(o.Fecha).toDateString()===hoyStr);
-    const hecho = (d.horario_log||[]).some(l=>l.HorarioID===h.ID && new Date(l.Fecha).toDateString()===hoyStr);
-    return { hora: horaCorta(ov?ov.Hora:h.Hora), actividad:h.Actividad, obs:h.Observaciones, hecho };
-  }).sort((a,b)=>a.hora.localeCompare(b.hora));
+    const real = horaRealDe(d.horario_log, 'HorarioID', h.ID);
+    return { tipo:'horario', id:h.ID, hora: horaCorta(ov?ov.Hora:h.Hora), actividad:h.Actividad, obs:h.Observaciones, hecho:!!real.logId, horaReal:real.horaReal, logId:real.logId };
+  });
 
   const habitos = (d.habitos||[]).filter(h=>h.Activo!=='0' && !habitoLigadoAHorario(h.ID, d.horario)).map(h=>{
-    const hecho = (d.habito_log||[]).some(l=>l.HabitoID===h.ID && new Date(l.Fecha).toDateString()===hoyStr);
-    return { hora:'', actividad:(h.Emoji?h.Emoji+' ':'🎯 ')+h.Nombre, obs:'', hecho, esHabito:true };
+    const real = horaRealDe(d.habito_log, 'HabitoID', h.ID);
+    return { tipo:'habito', id:h.ID, hora:'', actividad:(h.Emoji?h.Emoji+' ':'🎯 ')+h.Nombre, obs:'', hecho:!!real.logId, horaReal:real.horaReal, logId:real.logId };
   });
 
   let eventos = [];
   try{ eventos = await fetchEventosGoogleHoy(); } catch(e){ /* sin Calendar conectado, se omite */ }
   pintarEstadoGoogleCalendar();
+  eventos = eventos.map(e=>Object.assign({ tipo:'evento' }, e));
 
-  const items = [...eventos, ...slots, ...habitos].sort((a,b)=>(a.hora||'99:99').localeCompare(b.hora||'99:99'));
+  // Notas tomadas dentro de cada franja (de su hora a la hora de la
+  // siguiente franja/evento) — para ver qué se anotó mientras pasaba eso,
+  // ej. apuntes de una clase junto al bloque de horario de esa clase.
+  const conHora = [...eventos, ...slots].sort((a,b)=>(a.hora||'').localeCompare(b.hora||''));
+  const notasHoy = (d.notas||[]).filter(n=>!esVerdadero(n.Papelera) && n.Fecha && new Date(n.Fecha).toDateString()===hoyStr);
+  conHora.forEach((it,i)=>{
+    const fin = conHora[i+1] ? (conHora[i+1].hora||'23:59') : '23:59';
+    it.notas = notasHoy.filter(n=>{
+      const h = horaCorta(new Date(n.Fecha).toTimeString());
+      return h >= it.hora && h < fin;
+    });
+  });
+
+  const items = [...conHora, ...habitos].sort((a,b)=>(a.hora||'99:99').localeCompare(b.hora||'99:99'));
   if(!items.length){ cont.innerHTML = '<div class="empty-row">Sin horario, hábitos ni eventos para hoy en Organizador</div>'; return; }
-  cont.innerHTML = items.map(it=>`
-    <div class="row disabled">
-      <div class="ic" style="background:${it.hecho?'var(--green)':'var(--accent)'};">${it.hora||'🎯'}</div>
-      <div class="body"><div class="main" style="${it.hecho?'text-decoration:line-through;opacity:.6;':''}">${escapeHtml(it.actividad||'')}</div>${it.obs?`<div class="sub">${escapeHtml(it.obs)}</div>`:''}</div>
+  cont.innerHTML = items.map((it,i)=>`
+    <div class="row">
+      <button class="ic" data-toggle="${it.tipo!=='evento'?i:''}" ${it.tipo==='evento'?'disabled':''} style="background:${it.hecho?'var(--green)':'var(--accent)'}; border:none; ${it.tipo!=='evento'?'cursor:pointer;':''}">${it.hora||'🎯'}</button>
+      <div class="body">
+        <div class="main" style="${it.hecho?'text-decoration:line-through;opacity:.6;':''}">${escapeHtml(it.actividad||'')}</div>
+        ${it.obs?`<div class="sub">${escapeHtml(it.obs)}</div>`:''}
+        ${it.horaReal?`<div class="sub" style="color:var(--green);">✓ Real: ${it.horaReal}</div>`:''}
+        ${(it.notas&&it.notas.length)?`<div class="sub">📝 ${it.notas.map(n=>escapeHtml(n.Titulo||'(nota)')).join(' · ')}</div>`:''}
+      </div>
     </div>
   `).join('');
+  cont.querySelectorAll('[data-toggle]:not([data-toggle=""])').forEach(b=> b.addEventListener('click', ()=> toggleHorarioHabito(items[parseInt(b.dataset.toggle)])));
+}
+async function toggleHorarioHabito(it){
+  const tabla = it.tipo==='horario' ? 'HORARIO_LOG' : 'HABITO_LOG';
+  const campoId = it.tipo==='horario' ? 'HorarioID' : 'HabitoID';
+  try{
+    if(it.hecho && it.logId){
+      await callOrganizador('deleteRow', { table:tabla, id:it.logId });
+    } else {
+      const row = { ID:uid(), Fecha:new Date().toISOString() };
+      row[campoId] = it.id;
+      await callOrganizador('saveRow', { table:tabla, row });
+    }
+    cargarHorarioTareasRegistro();
+  } catch(e){ toast('Error: '+e.message); }
 }
 function habitoLigadoAHorario(habitoId, horario){ return (horario||[]).some(h=>h.HabitoID===habitoId); }
 document.getElementById('btn-editar-rutina').addEventListener('click', ()=> irApp('notas'));
@@ -1385,83 +1382,6 @@ document.getElementById('tar-guardar').addEventListener('click', async function(
     }});
     toast('Guardado en Organizador');
     closeModal('modal-tarea');
-    cargarHorarioTareasRegistro();
-  } catch(e){ toast('Error: '+e.message); }
-  setBtnState(btn, 'idle', {idle:'Guardar'});
-});
-
-/* ---- Registro de tiempo y sueño ---- */
-function renderRegistroList(){
-  const cont = document.getElementById('registro-list');
-  const hoy = hoyISO();
-  const deHoy = state.registros.filter(r=>r.Fecha===hoy).sort((a,b)=> horaCorta(b.HoraInicio).localeCompare(horaCorta(a.HoraInicio)));
-  if(!deHoy.length){ cont.innerHTML = '<div class="empty-row">Sin registros hoy</div>'; return; }
-  cont.innerHTML = deHoy.map(r=>{
-    const esSueno = r.Tipo === 'sueño';
-    const titulo = esSueno ? 'Sueño' : (r.Titulo || 'Actividad');
-    return `<div class="row" data-id="${r.ID}">
-      <div class="ic" style="background:${esSueno?'var(--general)':'var(--acuerdos)'};">${esSueno?'🌙':'⏱️'}</div>
-      <div class="body"><div class="main">${escapeHtml(titulo)}</div><div class="sub">${horaCorta(r.HoraInicio)}–${horaCorta(r.HoraFin)}${r.Notas?(' · '+escapeHtml(r.Notas)):''}</div></div>
-      <button class="icon-btn" data-del="${r.ID}">🗑</button>
-    </div>`;
-  }).join('');
-  cont.querySelectorAll('.row[data-id]').forEach(r=> r.addEventListener('click', (e)=>{ if(e.target.closest('[data-del]')) return; abrirModalRegistro(r.dataset.id); }));
-  cont.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click', (e)=>{
-    e.stopPropagation();
-    const r = state.registros.find(x=>x.ID===b.dataset.del);
-    pedirConfirmacion('¿Eliminar este registro?', '', async ()=>{
-      r.Papelera = true;
-      await asegurarBackendPropio('saveRow', { table:'REGISTRO_TIEMPO_SUENO', row:r });
-      toast('Eliminado');
-      cargarHorarioTareasRegistro();
-    });
-  }));
-}
-document.getElementById('btn-registro-agregar').addEventListener('click', ()=> abrirModalRegistro(null));
-let registroTipoActual = 'sueño';
-function setRegistroTipo(tipo){
-  registroTipoActual = tipo;
-  document.getElementById('reg-tipo-sueno').classList.toggle('btn-primary', tipo==='sueño');
-  document.getElementById('reg-tipo-sueno').classList.toggle('btn-secondary', tipo!=='sueño');
-  document.getElementById('reg-tipo-actividad').classList.toggle('btn-primary', tipo==='actividad');
-  document.getElementById('reg-tipo-actividad').classList.toggle('btn-secondary', tipo!=='actividad');
-  document.getElementById('reg-titulo-wrap').classList.toggle('hidden', tipo==='sueño');
-}
-document.getElementById('reg-tipo-sueno').addEventListener('click', ()=> setRegistroTipo('sueño'));
-document.getElementById('reg-tipo-actividad').addEventListener('click', ()=> setRegistroTipo('actividad'));
-function abrirModalRegistro(idv){
-  const r = idv ? state.registros.find(x=>x.ID===idv) : null;
-  document.getElementById('reg-id').value = r ? r.ID : '';
-  setRegistroTipo(r ? r.Tipo : 'sueño');
-  document.getElementById('reg-titulo').value = r ? (r.Titulo||'') : '';
-  document.getElementById('reg-fecha').value = r ? r.Fecha : hoyISO();
-  document.getElementById('reg-inicio').value = r ? horaCorta(r.HoraInicio) : '';
-  document.getElementById('reg-fin').value = r ? horaCorta(r.HoraFin) : '';
-  document.getElementById('reg-notas').value = r ? (r.Notas||'') : '';
-  openModal('modal-registro');
-}
-document.getElementById('reg-cancelar').addEventListener('click', ()=> closeModal('modal-registro'));
-document.getElementById('reg-guardar').addEventListener('click', async function(){
-  const inicio = document.getElementById('reg-inicio').value;
-  if(!inicio){ toast('Ponle al menos la hora de inicio'); return; }
-  if(registroTipoActual==='actividad' && !document.getElementById('reg-titulo').value.trim()){ toast('Ponle un nombre a la actividad'); return; }
-  const btn = this;
-  setBtnState(btn, 'saving', {saving:'Guardando…'});
-  const idv = document.getElementById('reg-id').value;
-  const row = {
-    ID: idv || undefined,
-    Fecha: document.getElementById('reg-fecha').value || hoyISO(),
-    Tipo: registroTipoActual,
-    Titulo: registroTipoActual==='actividad' ? document.getElementById('reg-titulo').value.trim() : '',
-    HoraInicio: inicio, HoraFin: document.getElementById('reg-fin').value,
-    Notas: document.getElementById('reg-notas').value.trim(),
-    Usuario: (state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre || '',
-    Papelera: false
-  };
-  try{
-    await asegurarBackendPropio('saveRow', { table:'REGISTRO_TIEMPO_SUENO', row });
-    toast('Guardado');
-    closeModal('modal-registro');
     cargarHorarioTareasRegistro();
   } catch(e){ toast('Error: '+e.message); }
   setBtnState(btn, 'idle', {idle:'Guardar'});
