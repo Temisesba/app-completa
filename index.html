@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<!-- App Completa — v9 (accesos rápidos: deep-link directo a crear en Nota/Acuerdo/Outfit) — GAS v4 -->
+<!-- App Completa — v10 (Nota abre menú "+Nuevo" de Organizador; tab bar: Hoy/Notas/Mapa/Inventario) — GAS v4 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -551,7 +551,7 @@ body.chat-abierto .tabbar{display:none;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Nueve — todos los accesos rápidos abren directo a crear';
+const VERSION_TXT = 'Diez — navegación reordenada (Hoy, Notas, Mapa, Inventario primero)';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -864,18 +864,18 @@ function pintarConfigUsuarios(){
    ============================================================ */
 const NAV_ITEMS = [
   { id:'hoy', icon:'🏠', label:'Hoy', tab:true },
-  { id:'app:gastos', icon:'💳', label:'Gastos', tab:true, externo:true },
-  { id:'app:comidas', icon:'🍽️', label:'Comidas', tab:true, externo:true },
+  { id:'app:notas', icon:'📔', label:'Notas', tab:true, externo:true },
+  { id:'mapa', icon:'🗺️', label:'Mapa', tab:true },
+  { id:'inventario', icon:'📦', label:'Inventario', tab:true },
+  { id:'app:gastos', icon:'💳', label:'Gastos', tab:false, externo:true },
+  { id:'app:comidas', icon:'🍽️', label:'Comidas', tab:false, externo:true },
   { id:'app:ropa', icon:'👕', label:'Closet', tab:false, externo:true },
-  { id:'inventario', icon:'📦', label:'Inventario', tab:false },
-  { id:'mapa', icon:'🗺️', label:'Mapa', tab:false },
-  { id:'ia', icon:'💬', label:'IA', tab:false },
   { id:'app:acuerdos', icon:'🤝', label:'Acuerdos', tab:false, externo:true },
-  { id:'app:notas', icon:'✎', label:'Notas', tab:false, externo:true },
+  { id:'ia', icon:'💬', label:'IA', tab:false },
   { id:'config', icon:'⚙️', label:'Config', tab:false },
 ];
-// En móvil el tab bar solo tiene 5 huecos: Hoy, Gastos, Comidas, Closet, Más.
-const TAB_MOVIL = ['hoy','app:gastos','app:comidas','app:ropa','mas'];
+// En móvil el tab bar solo tiene 5 huecos: Hoy, Notas, Mapa, Inventario, Más.
+const TAB_MOVIL = ['hoy','app:notas','mapa','inventario','mas'];
 
 function irApp(key, hash){
   const a = APP_LINKS[key];
@@ -952,7 +952,7 @@ const QUICK_ACTIONS = [
   { id:'ia', label:'Preguntar a la IA', emoji:'💬', color:'var(--general)', tipo:'ia' },
   { id:'gastos', label:'Gasto', emoji:'💳', color:'var(--gastos)', tipo:'app', hash:'#nuevo' },
   { id:'comidas', label:'Comida', emoji:'🍽️', color:'var(--comidas)', tipo:'app', hash:'#nueva-comida' },
-  { id:'notas', label:'Nota', emoji:'📔', color:'var(--notas)', tipo:'app', hash:'#nueva-nota' },
+  { id:'notas', label:'Nota', emoji:'📔', color:'var(--notas)', tipo:'app', hash:'#nuevo' },
   { id:'tarea', label:'Tarea', emoji:'📝', color:'var(--general)', tipo:'tarea' },
   { id:'acuerdos', label:'Acuerdo', emoji:'🤝', color:'var(--acuerdos)', tipo:'app', hash:'#nuevo-acuerdo' },
   { id:'ropa', label:'Outfit de hoy', emoji:'👕', color:'var(--ropa)', tipo:'app', hash:'#hoy' },
