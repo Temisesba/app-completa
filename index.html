@@ -551,7 +551,7 @@ body.chat-abierto .tabbar{display:none;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Once — fix Tarea, horario se centra en la hora actual';
+const VERSION_TXT = 'Once — fix Tarea, horario se centra en la hora actual, mejor contraste';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1152,7 +1152,6 @@ async function cargarHorarioTareasRegistro(){
     await renderHorarioDesdeOrganizador();
     renderTareasDesdeOrganizador();
   } catch(e){
-    window.__debugHorarioError = e.message + ' | ' + e.stack;
     const msg = `<div class="empty-row">No se pudo cargar Organizador: ${escapeHtml(e.message)}</div>`;
     contH.innerHTML = msg; contT.innerHTML = msg;
   }
@@ -1259,7 +1258,6 @@ async function fetchEventosGoogleHoy(){
 
 const DIA_CODES = ['D','L','M','X','J','V','S']; // getDay(): 0=Dom..6=Sáb, igual que Organizador
 async function renderHorarioDesdeOrganizador(){
-  window.__contadorRenderHorario = (window.__contadorRenderHorario||0) + 1;
   const cont = document.getElementById('horario-list');
   const d = state.organizadorData || {};
   const hoy = new Date();
@@ -1312,23 +1310,23 @@ async function renderHorarioDesdeOrganizador(){
       </div>
     </div>
   `).join('');
-  cont.insertAdjacentHTML('beforeend', '<div id="marca-debug-viva">MARCA-VIVA-'+Date.now()+'</div>');
   cont.querySelectorAll('[data-toggle]:not([data-toggle=""])').forEach(b=> b.addEventListener('click', ()=> toggleHorarioHabito(items[parseInt(b.dataset.toggle)])));
 
   // Se desplaza a la hora actual solo la primera vez que carga el Home —
   // así se ve de entrada "dónde vas" sin tener que buscarlo, pero no salta
   // la pantalla sola cada vez que se marca algo como cumplido (eso también
-  // vuelve a llamar a esta función).
+  // vuelve a llamar a esta función). behavior:'auto' (instantáneo) en vez de
+  // 'smooth' — con 'smooth' otros renders async (widgets, colapsables) que
+  // siguen llegando alteran el layout a medio camino y cancelan la
+  // animación antes de terminar.
   if(!horarioYaCentrado){
     horarioYaCentrado = true;
     const ahora = horaCorta(new Date().toTimeString());
     let idxActual = -1;
     items.forEach((it,i)=>{ if(it.hora && it.hora<=ahora) idxActual = i; });
-    window.__debugHorario = { ahora, idxActual, totalItems: items.length };
     if(idxActual>=0){
       const fila = cont.querySelector(`[data-fila="${idxActual}"]`);
-      window.__debugHorario.filaEncontrada = !!fila;
-      if(fila) setTimeout(()=>{ fila.scrollIntoView({ block:'center', behavior:'smooth' }); window.__debugHorario.scrolled = true; }, 150);
+      if(fila) setTimeout(()=> fila.scrollIntoView({ block:'center', behavior:'auto' }), 500);
     }
   }
 }
