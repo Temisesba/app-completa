@@ -1149,9 +1149,10 @@ async function cargarHorarioTareasRegistro(){
   try{
     const data = await callOrganizador('getAll');
     state.organizadorData = data.data;
-    renderHorarioDesdeOrganizador();
+    await renderHorarioDesdeOrganizador();
     renderTareasDesdeOrganizador();
   } catch(e){
+    window.__debugHorarioError = e.message + ' | ' + e.stack;
     const msg = `<div class="empty-row">No se pudo cargar Organizador: ${escapeHtml(e.message)}</div>`;
     contH.innerHTML = msg; contT.innerHTML = msg;
   }
