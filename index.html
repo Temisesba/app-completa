@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<!-- App Completa — v8 (Horario: planeado vs. real + notas por hora, se retiró el Registro propio) — GAS v4 -->
+<!-- App Completa — v9 (accesos rápidos: deep-link directo a crear en Nota/Acuerdo/Outfit) — GAS v4 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -551,7 +551,7 @@ body.chat-abierto .tabbar{display:none;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Ocho — horario planeado vs. real, con notas por hora';
+const VERSION_TXT = 'Nueve — todos los accesos rápidos abren directo a crear';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -952,10 +952,10 @@ const QUICK_ACTIONS = [
   { id:'ia', label:'Preguntar a la IA', emoji:'💬', color:'var(--general)', tipo:'ia' },
   { id:'gastos', label:'Gasto', emoji:'💳', color:'var(--gastos)', tipo:'app', hash:'#nuevo' },
   { id:'comidas', label:'Comida', emoji:'🍽️', color:'var(--comidas)', tipo:'app', hash:'#nueva-comida' },
-  { id:'notas', label:'Nota', emoji:'📔', color:'var(--notas)', tipo:'app' },
+  { id:'notas', label:'Nota', emoji:'📔', color:'var(--notas)', tipo:'app', hash:'#nueva-nota' },
   { id:'tarea', label:'Tarea', emoji:'📝', color:'var(--general)', tipo:'tarea' },
-  { id:'acuerdos', label:'Acuerdo', emoji:'🤝', color:'var(--acuerdos)', tipo:'app' },
-  { id:'ropa', label:'Outfit de hoy', emoji:'👕', color:'var(--ropa)', tipo:'app' },
+  { id:'acuerdos', label:'Acuerdo', emoji:'🤝', color:'var(--acuerdos)', tipo:'app', hash:'#nuevo-acuerdo' },
+  { id:'ropa', label:'Outfit de hoy', emoji:'👕', color:'var(--ropa)', tipo:'app', hash:'#hoy' },
 ];
 function pintarQuickActions(){
   const cont = document.getElementById('quick-actions');
