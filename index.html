@@ -1310,40 +1310,36 @@ async function renderHorarioDesdeOrganizador(){
       </div>
     </div>
   `).join('');
-  cont.querySelectorAll('[data-toggle]:not([data-toggle=""])').forEach(b=> b.addEventListener('click', ()=> toggleHorarioHabito(items[parseInt(b.dataset.toggle)])));
-
   // Se desplaza a la hora actual solo la primera vez que carga el Home —
   // así se ve de entrada "dónde vas" sin tener que buscarlo, pero no salta
   // la pantalla sola cada vez que se marca algo como cumplido (eso también
-  // vuelve a llamar a esta función). behavior:'auto' (instantáneo) en vez de
-  // 'smooth' — con 'smooth' otros renders async (widgets, colapsables) que
-  // siguen llegando alteran el layout a medio camino y cancelan la
-  // animación antes de terminar.
-  window.__debugCount = (window.__debugCount||0)+1;
-  window.__debugLog = (window.__debugLog||[]);
-  window.__debugLog.push({n: window.__debugCount, horarioYaCentrado, itemsLen: items.length});
+  // vuelve a llamar a esta función). Va ANTES de enganchar los botones de
+  // check (abajo) a propósito: así nunca queda atrás de nada que pueda
+  // fallar.
   if(!horarioYaCentrado){
     horarioYaCentrado = true;
     const ahora = horaCorta(new Date().toTimeString());
     let idxActual = -1;
     items.forEach((it,i)=>{ if(it.hora && it.hora<=ahora) idxActual = i; });
-    window.__debugLog[window.__debugLog.length-1].idxActual = idxActual;
-    window.__debugLog[window.__debugLog.length-1].ahora = ahora;
     if(idxActual>=0){
       const idHora = `hora-actual-${idxActual}`;
       const fila = cont.querySelector(`[data-fila="${idxActual}"]`);
       if(fila){
         fila.id = idHora;
-        // Reintenta un par de veces: otros renders que llegan después
+        // Reintenta varias veces: otros renders que llegan después
         // (Tareas, widgets, colapsables) pueden mover el contenido y
         // cancelar el primer intento antes de que se note.
-        [400, 900, 1500].forEach(ms => setTimeout(()=>{
+        [200, 500, 900, 1500, 2500].forEach(ms => setTimeout(()=>{
           const el = document.getElementById(idHora);
           if(el) el.scrollIntoView({ block:'center', behavior:'auto' });
         }, ms));
       }
     }
   }
+
+  try{
+    cont.querySelectorAll('[data-toggle]:not([data-toggle=""])').forEach(b=> b.addEventListener('click', ()=> toggleHorarioHabito(items[parseInt(b.dataset.toggle)])));
+  } catch(e){ /* no debe bloquear el resto de la pantalla si esto falla */ }
 }
 let horarioYaCentrado = false;
 async function toggleHorarioHabito(it){
