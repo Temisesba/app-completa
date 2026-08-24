@@ -1312,6 +1312,7 @@ async function renderHorarioDesdeOrganizador(){
     </div>
   `).join('');
   cont.querySelectorAll('[data-toggle]:not([data-toggle=""])').forEach(b=> b.addEventListener('click', ()=> toggleHorarioHabito(items[parseInt(b.dataset.toggle)])));
+  cont.insertAdjacentHTML('beforeend', '<div id="marca-debug-viva">MARCA-VIVA-'+Date.now()+'</div>');
 
   // Se desplaza a la hora actual solo la primera vez que carga el Home —
   // así se ve de entrada "dónde vas" sin tener que buscarlo, pero no salta
