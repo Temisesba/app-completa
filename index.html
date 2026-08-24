@@ -1325,8 +1325,18 @@ async function renderHorarioDesdeOrganizador(){
     let idxActual = -1;
     items.forEach((it,i)=>{ if(it.hora && it.hora<=ahora) idxActual = i; });
     if(idxActual>=0){
+      const idHora = `hora-actual-${idxActual}`;
       const fila = cont.querySelector(`[data-fila="${idxActual}"]`);
-      if(fila) setTimeout(()=> fila.scrollIntoView({ block:'center', behavior:'auto' }), 500);
+      if(fila){
+        fila.id = idHora;
+        // Reintenta un par de veces: otros renders que llegan después
+        // (Tareas, widgets, colapsables) pueden mover el contenido y
+        // cancelar el primer intento antes de que se note.
+        [400, 900, 1500].forEach(ms => setTimeout(()=>{
+          const el = document.getElementById(idHora);
+          if(el) el.scrollIntoView({ block:'center', behavior:'auto' });
+        }, ms));
+      }
     }
   }
 }
