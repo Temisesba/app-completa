@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<!-- App Completa — v10 (Nota abre menú "+Nuevo" de Organizador; tab bar: Hoy/Notas/Mapa/Inventario) — GAS v4 -->
+<!-- App Completa — v11 (fix boton Tarea, horario se centra en hora actual, contraste de horas) — GAS v4 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -551,7 +551,7 @@ body.chat-abierto .tabbar{display:none;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Diez — navegación reordenada (Hoy, Notas, Mapa, Inventario primero)';
+const VERSION_TXT = 'Once — fix Tarea, horario se centra en la hora actual';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1300,8 +1300,8 @@ async function renderHorarioDesdeOrganizador(){
   const items = [...conHora, ...habitos].sort((a,b)=>(a.hora||'99:99').localeCompare(b.hora||'99:99'));
   if(!items.length){ cont.innerHTML = '<div class="empty-row">Sin horario, hábitos ni eventos para hoy en Organizador</div>'; return; }
   cont.innerHTML = items.map((it,i)=>`
-    <div class="row">
-      <button class="ic" data-toggle="${it.tipo!=='evento'?i:''}" ${it.tipo==='evento'?'disabled':''} style="background:${it.hecho?'var(--green)':'var(--accent)'}; border:none; ${it.tipo!=='evento'?'cursor:pointer;':''}">${it.hora||'🎯'}</button>
+    <div class="row" data-fila="${i}">
+      <button class="ic" data-toggle="${it.tipo!=='evento'?i:''}" ${it.tipo==='evento'?'disabled':''} style="background:${it.hecho?'var(--green)':'var(--accent)'}; border:none; font-weight:800; font-size:12px; letter-spacing:.2px; ${it.tipo!=='evento'?'cursor:pointer;':''}">${it.hora||'🎯'}</button>
       <div class="body">
         <div class="main" style="${it.hecho?'text-decoration:line-through;opacity:.6;':''}">${escapeHtml(it.actividad||'')}</div>
         ${it.obs?`<div class="sub">${escapeHtml(it.obs)}</div>`:''}
@@ -1311,7 +1311,23 @@ async function renderHorarioDesdeOrganizador(){
     </div>
   `).join('');
   cont.querySelectorAll('[data-toggle]:not([data-toggle=""])').forEach(b=> b.addEventListener('click', ()=> toggleHorarioHabito(items[parseInt(b.dataset.toggle)])));
+
+  // Se desplaza a la hora actual solo la primera vez que carga el Home —
+  // así se ve de entrada "dónde vas" sin tener que buscarlo, pero no salta
+  // la pantalla sola cada vez que se marca algo como cumplido (eso también
+  // vuelve a llamar a esta función).
+  if(!horarioYaCentrado){
+    horarioYaCentrado = true;
+    const ahora = horaCorta(new Date().toTimeString());
+    let idxActual = -1;
+    items.forEach((it,i)=>{ if(it.hora && it.hora<=ahora) idxActual = i; });
+    if(idxActual>=0){
+      const fila = cont.querySelector(`[data-fila="${idxActual}"]`);
+      if(fila) setTimeout(()=> fila.scrollIntoView({ block:'center', behavior:'smooth' }), 150);
+    }
+  }
 }
+let horarioYaCentrado = false;
 async function toggleHorarioHabito(it){
   const tabla = it.tipo==='horario' ? 'HORARIO_LOG' : 'HABITO_LOG';
   const campoId = it.tipo==='horario' ? 'HorarioID' : 'HabitoID';
@@ -1359,8 +1375,6 @@ function abrirModalTarea(){
   document.getElementById('tar-id').value = '';
   document.getElementById('tar-titulo').value = '';
   document.getElementById('tar-notas').value = '';
-  document.getElementById('tar-fecha').value = '';
-  document.getElementById('tar-hora').value = '';
   openModal('modal-tarea');
 }
 document.getElementById('tar-cancelar').addEventListener('click', ()=> closeModal('modal-tarea'));
