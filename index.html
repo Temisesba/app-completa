@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#f2f2f7">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- App Completa — v5 (Sesión de Gastos: la IA guarda gastos directo) — GAS v4 -->
+<!-- App Completa — v6 (Organizador = notas/horario/tareas reales; accesos directos a +Gasto y Registrar comida) — GAS v4 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -280,10 +280,7 @@ body.chat-abierto .tabbar{display:none;}
 
         <div class="section-title t-caption">Tu horario de hoy</div>
         <div class="grouped" id="horario-list"></div>
-        <div style="display:flex; gap:10px; margin-bottom:16px;">
-          <button class="btn btn-secondary btn-sm" id="btn-horario-agregar">+ Agregar hora</button>
-          <button class="btn btn-text btn-sm hidden" id="btn-horario-copiar-ayer">Copiar de ayer</button>
-        </div>
+        <button class="btn btn-text btn-sm" onclick="irApp('notas')" style="margin-bottom:16px;">Editar rutina en Organizador →</button>
 
         <div class="section-title t-caption">Tareas</div>
         <div class="grouped" id="tareas-list"></div>
@@ -476,37 +473,16 @@ body.chat-abierto .tabbar{display:none;}
   </div>
 </div>
 
-<!-- ============ MODAL horario (franja de hoy) ============ -->
-<div class="modal-overlay" id="modal-horario">
-  <div class="modal modal-wrap">
-    <button class="close-x" data-close-modal="modal-horario">✕</button>
-    <h2 class="t-title" id="modal-horario-titulo">Nueva hora</h2>
-    <input type="hidden" id="hor-id">
-    <div style="margin-top:14px;">
-      <input id="hor-hora" class="field" type="time">
-      <input id="hor-plan" class="field" placeholder="Plan (ej. Hacer ejercicio, Desayunar)">
-      <input id="hor-quehice" class="field" placeholder="Qué hice (llénalo cuando pase)">
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" id="hor-cancelar">Cancelar</button>
-      <button class="btn btn-primary" id="hor-guardar">Guardar</button>
-    </div>
-  </div>
-</div>
-
 <!-- ============ MODAL tarea ============ -->
 <div class="modal-overlay" id="modal-tarea">
   <div class="modal modal-wrap">
     <button class="close-x" data-close-modal="modal-tarea">✕</button>
     <h2 class="t-title" id="modal-tarea-titulo">Nueva tarea</h2>
     <input type="hidden" id="tar-id">
-    <div style="margin-top:14px;">
+    <p class="t-sub" style="margin-top:6px;">Se guarda en el cuaderno "Tareas" de Organizador. La fecha límite se pone luego, allá.</p>
+    <div style="margin-top:10px;">
       <input id="tar-titulo" class="field" placeholder="¿Qué hay que hacer?">
       <textarea id="tar-notas" class="field" placeholder="Notas (opcional)"></textarea>
-      <div style="display:flex; gap:10px;">
-        <input id="tar-fecha" class="field" type="date" placeholder="Fecha límite">
-        <input id="tar-hora" class="field" type="time">
-      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="tar-cancelar">Cancelar</button>
@@ -602,7 +578,7 @@ body.chat-abierto .tabbar{display:none;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Cinco — la IA ya puede guardar gastos directo en Gastos';
+const VERSION_TXT = 'Seis — Organizador es tu app de notas/horario/tareas, accesos rápidos directos';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -611,13 +587,13 @@ const APP_LINKS = {
   comidas:  { nombre:'Comidas',  emoji:'🍽️', color:'var(--comidas)',  url:'https://temisesba.github.io/comidas/' },
   acuerdos: { nombre:'Acuerdos', emoji:'🤝', color:'var(--acuerdos)', url:'https://temisesba.github.io/acuerdos/' },
   ropa:     { nombre:'Closet',   emoji:'👕', color:'var(--ropa)',     url:'https://temisesba.github.io/ropa/' },
-  notas:    { nombre:'Notas',    emoji:'✎',  color:'var(--notas)',   url:'https://temisesba.github.io/notas/' }
+  notas:    { nombre:'Organizador', emoji:'📔', color:'var(--notas)', url:'https://temisesba.github.io/organizador/' }
 };
 
 const LS = {
   usuarios:'ac_usuarios', activo:'ac_usuario_activo', conexiones:'ac_conexiones',
   gasUrlPropia:'ac_gas_url', mejorasCache:'ac_mejoras_cache', inventarioCache:'ac_inventario_cache',
-  gastosSesion:'ac_gastos_sesion', gastosPass:'ac_gastos_pass'
+  gastosSesion:'ac_gastos_sesion', gastosPass:'ac_gastos_pass', organizadorSheetId:'ac_organizador_sheet_id'
 };
 
 let state = {
@@ -626,7 +602,7 @@ let state = {
   horario: [], tareas: [], registros: [],
   lugares: [], categoriasLugares: [], filtroLugar: 'todos',
   iaChats: [], chatActivo: null, iaImagenPendiente: null,
-  gastosSesion:'', gastosPass:'', gastosMiembros: []
+  gastosSesion:'', gastosPass:'', gastosMiembros: [], organizadorSheetId:''
 };
 let mapaLeaflet = null, mapaMarkersLayer = null;
 
@@ -668,6 +644,14 @@ async function callGAS(url, action, extra){
   const data = await res.json();
   if(data.error) throw new Error(data.error);
   return data;
+}
+
+// Organizador es multi-tenant: cada request necesita también el sheetId
+// (a diferencia de Acuerdos/Comidas/Ropa/App_Completa, que tienen un Sheet
+// fijo del lado del backend) — ver Configuración → Conexiones → Organizador.
+async function callOrganizador(action, extra){
+  if(!state.organizadorSheetId) throw new Error('Falta el ID del Sheet de Organizador (Configuración → Conexiones)');
+  return callGAS(state.conexiones.notas, action, Object.assign({ sheetId: state.organizadorSheetId }, extra||{}));
 }
 
 /* ============================================================
@@ -920,10 +904,10 @@ const NAV_ITEMS = [
 // En móvil el tab bar solo tiene 5 huecos: Hoy, Gastos, Comidas, Closet, Más.
 const TAB_MOVIL = ['hoy','app:gastos','app:comidas','app:ropa','mas'];
 
-function irApp(key){
+function irApp(key, hash){
   const a = APP_LINKS[key];
   if(!a){ toast('Esa app llega en una fase siguiente'); return; }
-  location.href = a.url;
+  location.href = a.url + (hash||'');
 }
 
 function construirNav(){
@@ -992,14 +976,14 @@ function irAVista(id){
    6. HOME "HOY" — accesos rápidos + widgets + navegación a apps
    ============================================================ */
 const QUICK_ACTIONS = [
-  { id:'gastos', label:'Gasto', emoji:'💳', color:'var(--gastos)', tipo:'app' },
-  { id:'comidas', label:'Comida', emoji:'🍽️', color:'var(--comidas)', tipo:'app' },
-  { id:'ropa', label:'Outfit de hoy', emoji:'👕', color:'var(--ropa)', tipo:'app' },
-  { id:'acuerdos', label:'Acuerdo', emoji:'🤝', color:'var(--acuerdos)', tipo:'app' },
-  { id:'notas', label:'Nota', emoji:'✎', color:'var(--notas)', tipo:'app' },
+  { id:'ia', label:'Preguntar a la IA', emoji:'💬', color:'var(--general)', tipo:'ia' },
+  { id:'gastos', label:'Gasto', emoji:'💳', color:'var(--gastos)', tipo:'app', hash:'#nuevo' },
+  { id:'comidas', label:'Comida', emoji:'🍽️', color:'var(--comidas)', tipo:'app', hash:'#nueva-comida' },
+  { id:'notas', label:'Nota', emoji:'📔', color:'var(--notas)', tipo:'app' },
   { id:'tarea', label:'Tarea', emoji:'📝', color:'var(--general)', tipo:'tarea' },
   { id:'registro', label:'Sueño/tiempo', emoji:'⏱️', color:'var(--acuerdos)', tipo:'registro' },
-  { id:'ia', label:'Preguntar a la IA', emoji:'💬', color:'var(--general)', tipo:'ia' },
+  { id:'acuerdos', label:'Acuerdo', emoji:'🤝', color:'var(--acuerdos)', tipo:'app' },
+  { id:'ropa', label:'Outfit de hoy', emoji:'👕', color:'var(--ropa)', tipo:'app' },
 ];
 function pintarQuickActions(){
   const cont = document.getElementById('quick-actions');
@@ -1011,7 +995,7 @@ function pintarQuickActions(){
   `).join('');
   cont.querySelectorAll('[data-app]').forEach(b=> b.addEventListener('click', ()=>{
     const a = QUICK_ACTIONS.find(x=>x.id===b.dataset.app);
-    if(a.tipo==='app') irApp(a.id);
+    if(a.tipo==='app') irApp(a.id, a.hash);
     else if(a.tipo==='tarea') abrirModalTarea(null);
     else if(a.tipo==='registro') abrirModalRegistro(null);
     else if(a.tipo==='ia'){ irAVista('ia'); nuevoChatIA(); }
@@ -1034,6 +1018,7 @@ function cargarConexiones(){
   state.gasUrlPropia = localStorage.getItem(LS.gasUrlPropia) || '';
   state.gastosSesion = localStorage.getItem(LS.gastosSesion) || '';
   state.gastosPass = localStorage.getItem(LS.gastosPass) || '';
+  state.organizadorSheetId = localStorage.getItem(LS.organizadorSheetId) || '';
   pintarQuickActions();
   cargarHomeWidgets();
   cargarHorarioTareasRegistro();
@@ -1099,13 +1084,12 @@ async function construirWidgetAcuerdos(){
 }
 
 async function construirWidgetNotas(){
-  const url = state.conexiones.notas;
-  if(!url) return { icon:'✎', color:'var(--notas)', titulo:'Últimas notas', sub:'Conecta Notas en Configuración', accion:()=>irAVista('config') };
-  const data = await callGAS(url, 'getIdeas');
-  const lista = data.ideas || data.data || (Array.isArray(data) ? data : []);
-  const ultimas = (Array.isArray(lista) ? lista : []).slice(-3).reverse();
-  const sub = ultimas.length ? ultimas.map(n => (n.Texto||n.texto||n.Titulo||'').toString().slice(0,40)).join(' · ') : 'Sin notas todavía';
-  return { icon:'✎', color:'var(--notas)', titulo:'Últimas notas', sub, accion:()=>irApp('notas') };
+  if(!state.conexiones.notas || !state.organizadorSheetId) return { icon:'📔', color:'var(--notas)', titulo:'Últimas notas', sub:'Conecta Organizador en Configuración', accion:()=>irAVista('config') };
+  const data = await callOrganizador('getAll');
+  const lista = (data.data.notas||[]).filter(n=>!esVerdadero(n.Papelera)).sort((a,b)=>(b.Fecha||'').localeCompare(a.Fecha||''));
+  const ultimas = lista.slice(0,3);
+  const sub = ultimas.length ? ultimas.map(n => (n.Titulo||'').toString().slice(0,40)).join(' · ') : 'Sin notas todavía';
+  return { icon:'📔', color:'var(--notas)', titulo:'Últimas notas', sub, accion:()=>irApp('notas') };
 }
 
 /* ---- Secciones colapsables: lista de compras, outfit de hoy, closet ---- */
@@ -1183,177 +1167,122 @@ function ayerISO(){ const d=new Date(); d.setDate(d.getDate()-1); return d.getFu
 function horaCorta(h){ return (h||'').toString().slice(0,5); }
 
 async function cargarHorarioTareasRegistro(){
-  const contH = document.getElementById('horario-list'), contT = document.getElementById('tareas-list'), contR = document.getElementById('registro-list');
-  if(!state.gasUrlPropia){
-    const msg = '<div class="empty-row">Configura tu Web App propia en Configuración → Conexiones</div>';
-    contH.innerHTML = msg; contT.innerHTML = msg; contR.innerHTML = msg;
+  cargarRegistroPropio(); // registro de tiempo/sueño: sigue en el backend propio del cascarón, sin cambios
+
+  const contH = document.getElementById('horario-list'), contT = document.getElementById('tareas-list');
+  if(!state.conexiones.notas || !state.organizadorSheetId){
+    const msg = '<div class="empty-row">Conecta Organizador (URL + ID de Sheet) en Configuración → Conexiones</div>';
+    contH.innerHTML = msg; contT.innerHTML = msg;
     return;
   }
   contH.innerHTML = '<div class="empty-row">Cargando…</div>';
   contT.innerHTML = '<div class="empty-row">Cargando…</div>';
+  try{
+    const data = await callOrganizador('getAll');
+    state.organizadorData = data.data;
+    renderHorarioDesdeOrganizador();
+    renderTareasDesdeOrganizador();
+  } catch(e){
+    const msg = `<div class="empty-row">No se pudo cargar Organizador: ${escapeHtml(e.message)}</div>`;
+    contH.innerHTML = msg; contT.innerHTML = msg;
+  }
+}
+async function cargarRegistroPropio(){
+  const contR = document.getElementById('registro-list');
+  if(!state.gasUrlPropia){ contR.innerHTML = '<div class="empty-row">Configura tu Web App propia en Configuración → Conexiones</div>'; return; }
   contR.innerHTML = '<div class="empty-row">Cargando…</div>';
   try{
     const data = await asegurarBackendPropio('getAll');
-    state.horario = (data.data.horario || []).filter(h=>!esVerdadero(h.Papelera));
-    state.tareas = (data.data.tareas || []).filter(t=>!esVerdadero(t.Papelera));
     state.registros = (data.data.registro_tiempo_sueno || []).filter(r=>!esVerdadero(r.Papelera));
-    renderHorarioList();
-    renderTareasList();
     renderRegistroList();
-  } catch(e){
-    const msg = `<div class="empty-row">No se pudo cargar: ${escapeHtml(e.message)}</div>`;
-    contH.innerHTML = msg; contT.innerHTML = msg; contR.innerHTML = msg;
-  }
+  } catch(e){ contR.innerHTML = `<div class="empty-row">No se pudo cargar: ${escapeHtml(e.message)}</div>`; }
 }
 
-/* ---- Horario de hoy ---- */
-function renderHorarioList(){
+/* ---- Horario de hoy + Hábitos (traídos de Organizador — es donde Temis ya
+   lleva su rutina real, ligada a Google Calendar; App_Completa no duplica
+   ese dato, solo lo muestra). Editar la rutina se sigue haciendo en
+   Organizador — aquí es de solo lectura para no arriesgar su formato. ---- */
+const DIA_CODES = ['D','L','M','X','J','V','S']; // getDay(): 0=Dom..6=Sáb, igual que Organizador
+function renderHorarioDesdeOrganizador(){
   const cont = document.getElementById('horario-list');
-  const hoy = hoyISO();
-  const deHoy = state.horario.filter(h=>h.Fecha===hoy).sort((a,b)=> horaCorta(a.Hora).localeCompare(horaCorta(b.Hora)));
-  const deAyer = state.horario.filter(h=>h.Fecha===ayerISO());
-  document.getElementById('btn-horario-copiar-ayer').classList.toggle('hidden', !(deHoy.length===0 && deAyer.length>0));
-  if(!deHoy.length){ cont.innerHTML = '<div class="empty-row">Sin horario para hoy — agrega tu primera hora</div>'; return; }
-  cont.innerHTML = deHoy.map(h=>`
-    <div class="row" data-id="${h.ID}">
-      <div class="ic" style="background:var(--accent);">${horaCorta(h.Hora)}</div>
-      <div class="body"><div class="main">${escapeHtml(h.Plan||'')}</div>
-      <div class="sub">${h.QueHice ? ('Hiciste: '+escapeHtml(h.QueHice)) : 'Toca para anotar qué hiciste'}</div></div>
-      <button class="icon-btn" data-del="${h.ID}">🗑</button>
+  const d = state.organizadorData || {};
+  const hoy = new Date();
+  const code = DIA_CODES[hoy.getDay()];
+  const hoyStr = hoy.toDateString();
+  const slots = (d.horario||[]).filter(h=> String(h.Dias||'').split(',').includes(code)).map(h=>{
+    const ov = (d.horario_override||[]).find(o=>o.HorarioID===h.ID && new Date(o.Fecha).toDateString()===hoyStr);
+    const hecho = (d.horario_log||[]).some(l=>l.HorarioID===h.ID && new Date(l.Fecha).toDateString()===hoyStr);
+    return { hora: horaCorta(ov?ov.Hora:h.Hora), actividad:h.Actividad, obs:h.Observaciones, hecho };
+  }).sort((a,b)=>a.hora.localeCompare(b.hora));
+
+  const habitos = (d.habitos||[]).filter(h=>h.Activo!=='0' && !habitoLigadoAHorario(h.ID, d.horario)).map(h=>{
+    const hecho = (d.habito_log||[]).some(l=>l.HabitoID===h.ID && new Date(l.Fecha).toDateString()===hoyStr);
+    return { hora:'', actividad:(h.Emoji?h.Emoji+' ':'🎯 ')+h.Nombre, obs:'', hecho, esHabito:true };
+  });
+
+  const items = [...slots, ...habitos];
+  if(!items.length){ cont.innerHTML = '<div class="empty-row">Sin horario ni hábitos para hoy en Organizador</div>'; return; }
+  cont.innerHTML = items.map(it=>`
+    <div class="row disabled">
+      <div class="ic" style="background:${it.hecho?'var(--green)':'var(--accent)'};">${it.hora||'🎯'}</div>
+      <div class="body"><div class="main" style="${it.hecho?'text-decoration:line-through;opacity:.6;':''}">${escapeHtml(it.actividad||'')}</div>${it.obs?`<div class="sub">${escapeHtml(it.obs)}</div>`:''}</div>
     </div>
   `).join('');
-  cont.querySelectorAll('.row[data-id]').forEach(r=> r.addEventListener('click', (e)=>{ if(e.target.closest('[data-del]')) return; abrirModalHorario(r.dataset.id); }));
-  cont.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click', (e)=>{
-    e.stopPropagation();
-    const h = state.horario.find(x=>x.ID===b.dataset.del);
-    pedirConfirmacion('¿Eliminar esta hora?', h.Plan||'', async ()=>{
-      h.Papelera = true;
-      await asegurarBackendPropio('saveRow', { table:'HORARIO', row:h });
-      toast('Eliminado');
-      cargarHorarioTareasRegistro();
-    });
-  }));
 }
-document.getElementById('btn-horario-agregar').addEventListener('click', ()=> abrirModalHorario(null));
-document.getElementById('btn-horario-copiar-ayer').addEventListener('click', async function(){
-  const btn = this;
-  setBtnState(btn, 'saving', {saving:'Copiando…'});
-  const deAyer = state.horario.filter(h=>h.Fecha===ayerISO());
-  const hoy = hoyISO();
-  try{
-    for(const h of deAyer){
-      await asegurarBackendPropio('saveRow', { table:'HORARIO', row:{ Fecha:hoy, Hora:h.Hora, Plan:h.Plan, QueHice:'', Orden:h.Orden, Usuario:(state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre||'', Papelera:false } });
-    }
-    toast('Horario de ayer copiado');
-    cargarHorarioTareasRegistro();
-  } catch(e){ toast('Error: '+e.message); }
-  setBtnState(btn, 'idle', {idle:'Copiar de ayer'});
-});
-function abrirModalHorario(idv){
-  const h = idv ? state.horario.find(x=>x.ID===idv) : null;
-  document.getElementById('modal-horario-titulo').textContent = h ? 'Editar hora' : 'Nueva hora';
-  document.getElementById('hor-id').value = h ? h.ID : '';
-  document.getElementById('hor-hora').value = h ? horaCorta(h.Hora) : '';
-  document.getElementById('hor-plan').value = h ? (h.Plan||'') : '';
-  document.getElementById('hor-quehice').value = h ? (h.QueHice||'') : '';
-  openModal('modal-horario');
-}
-document.getElementById('hor-cancelar').addEventListener('click', ()=> closeModal('modal-horario'));
-document.getElementById('hor-guardar').addEventListener('click', async function(){
-  const plan = document.getElementById('hor-plan').value.trim();
-  const hora = document.getElementById('hor-hora').value;
-  if(!plan || !hora){ toast('Ponle hora y plan'); return; }
-  const btn = this;
-  setBtnState(btn, 'saving', {saving:'Guardando…'});
-  const idv = document.getElementById('hor-id').value;
-  const existente = idv ? state.horario.find(x=>x.ID===idv) : null;
-  const row = {
-    ID: idv || undefined,
-    Fecha: existente ? existente.Fecha : hoyISO(),
-    Hora: hora, Plan: plan, QueHice: document.getElementById('hor-quehice').value.trim(),
-    Orden: existente ? existente.Orden : state.horario.filter(h=>h.Fecha===hoyISO()).length,
-    Usuario: (state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre || '',
-    Papelera: false
-  };
-  try{
-    await asegurarBackendPropio('saveRow', { table:'HORARIO', row });
-    toast('Guardado');
-    closeModal('modal-horario');
-    cargarHorarioTareasRegistro();
-  } catch(e){ toast('Error: '+e.message); }
-  setBtnState(btn, 'idle', {idle:'Guardar'});
-});
+function habitoLigadoAHorario(habitoId, horario){ return (horario||[]).some(h=>h.HabitoID===habitoId); }
 
-/* ---- Tareas ---- */
-function renderTareasList(){
+/* ---- Tareas (notas de Organizador en el cuaderno "Tareas") ---- */
+function renderTareasDesdeOrganizador(){
   const cont = document.getElementById('tareas-list');
-  const hoy = hoyISO();
-  const activas = state.tareas.filter(t=>!esVerdadero(t.Completada));
-  const vencidas = activas.filter(t=>t.FechaVencimiento && t.FechaVencimiento < hoy).sort((a,b)=>a.FechaVencimiento.localeCompare(b.FechaVencimiento));
-  const resto = activas.filter(t=>!t.FechaVencimiento || t.FechaVencimiento >= hoy).sort((a,b)=>(a.FechaVencimiento||'9999').localeCompare(b.FechaVencimiento||'9999'));
-  const lista = [...vencidas, ...resto].slice(0, 10);
+  const d = state.organizadorData || {};
+  const notas = (d.notas||[]).filter(n=> !esVerdadero(n.Papelera) && (n.Notebook==='Tareas' || String(n.Tags||'').includes('#task')));
+  const activas = notas.filter(n=> !String(n.Tags||'').split(/\s+/).includes('#hecho'));
+  const lista = activas.slice(0, 10);
   if(!lista.length){ cont.innerHTML = '<div class="empty-row">Sin tareas pendientes 🎉</div>'; return; }
-  cont.innerHTML = lista.map(t=>{
-    const vencida = t.FechaVencimiento && t.FechaVencimiento < hoy;
-    const sub = t.FechaVencimiento ? (vencida ? 'Venció el '+t.FechaVencimiento : 'Para el '+t.FechaVencimiento) : (t.Notas||'');
-    return `<div class="row" data-id="${t.ID}">
-      <button class="icon-btn" data-check="${t.ID}" style="border-radius:50%;">⭘</button>
-      <div class="body"><div class="main">${escapeHtml(t.Titulo)}</div><div class="sub" style="${vencida?'color:var(--red);':''}">${escapeHtml(sub)}</div></div>
-      <button class="icon-btn" data-del="${t.ID}">🗑</button>
-    </div>`;
-  }).join('');
-  cont.querySelectorAll('.row[data-id]').forEach(r=> r.addEventListener('click', (e)=>{ if(e.target.closest('[data-check],[data-del]')) return; abrirModalTarea(r.dataset.id); }));
-  cont.querySelectorAll('[data-check]').forEach(b=> b.addEventListener('click', async (e)=>{
-    e.stopPropagation();
-    const t = state.tareas.find(x=>x.ID===b.dataset.check);
-    t.Completada = true; t.FechaCompletada = hoyISO();
-    renderTareasList(); // optimista
-    try{ await asegurarBackendPropio('saveRow', { table:'TAREAS', row:t }); toast('Tarea completada'); }
-    catch(err){ toast('Error: '+err.message); }
-  }));
-  cont.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click', (e)=>{
-    e.stopPropagation();
-    const t = state.tareas.find(x=>x.ID===b.dataset.del);
-    pedirConfirmacion('¿Eliminar "'+t.Titulo+'"?', 'Se manda a la papelera.', async ()=>{
-      t.Papelera = true;
-      await asegurarBackendPropio('saveRow', { table:'TAREAS', row:t });
-      toast('Eliminada');
-      cargarHorarioTareasRegistro();
-    });
+  cont.innerHTML = lista.map(n=>`
+    <div class="row">
+      <button class="icon-btn" data-check="${n.ID}" style="border-radius:50%;">⭘</button>
+      <div class="body"><div class="main">${escapeHtml(n.Titulo||'(sin título)')}</div></div>
+    </div>
+  `).join('');
+  cont.querySelectorAll('[data-check]').forEach(b=> b.addEventListener('click', async ()=>{
+    const n = state.organizadorData.notas.find(x=>x.ID===b.dataset.check);
+    const tags = String(n.Tags||'').split(/\s+/).filter(Boolean);
+    tags.push('#hecho');
+    n.Tags = tags.join(' ');
+    renderTareasDesdeOrganizador(); // optimista
+    try{ await callOrganizador('saveRow', { table:'NOTAS', row:n, expectedFechaEdicion:n.FechaEdicion }); toast('Tarea completada'); }
+    catch(err){ toast('Error: '+err.message); cargarHorarioTareasRegistro(); }
   }));
 }
 document.getElementById('btn-tarea-agregar').addEventListener('click', ()=> abrirModalTarea(null));
-function abrirModalTarea(idv){
-  const t = idv ? state.tareas.find(x=>x.ID===idv) : null;
-  document.getElementById('modal-tarea-titulo').textContent = t ? 'Editar tarea' : 'Nueva tarea';
-  document.getElementById('tar-id').value = t ? t.ID : '';
-  document.getElementById('tar-titulo').value = t ? t.Titulo : '';
-  document.getElementById('tar-notas').value = t ? (t.Notas||'') : '';
-  document.getElementById('tar-fecha').value = t ? (t.FechaVencimiento||'') : '';
-  document.getElementById('tar-hora').value = t ? horaCorta(t.Hora) : '';
+function abrirModalTarea(){
+  document.getElementById('modal-tarea-titulo').textContent = 'Nueva tarea (en Organizador)';
+  document.getElementById('tar-id').value = '';
+  document.getElementById('tar-titulo').value = '';
+  document.getElementById('tar-notas').value = '';
+  document.getElementById('tar-fecha').value = '';
+  document.getElementById('tar-hora').value = '';
   openModal('modal-tarea');
 }
 document.getElementById('tar-cancelar').addEventListener('click', ()=> closeModal('modal-tarea'));
 document.getElementById('tar-guardar').addEventListener('click', async function(){
   const titulo = document.getElementById('tar-titulo').value.trim();
   if(!titulo){ toast('Ponle un título'); return; }
+  if(!state.conexiones.notas || !state.organizadorSheetId){ toast('Conecta Organizador en Configuración'); return; }
   const btn = this;
   setBtnState(btn, 'saving', {saving:'Guardando…'});
-  const idv = document.getElementById('tar-id').value;
-  const existente = idv ? state.tareas.find(x=>x.ID===idv) : null;
-  const row = {
-    ID: idv || undefined,
-    Titulo: titulo, Notas: document.getElementById('tar-notas').value.trim(),
-    FechaVencimiento: document.getElementById('tar-fecha').value,
-    Hora: document.getElementById('tar-hora').value,
-    Completada: existente ? existente.Completada : false,
-    FechaCompletada: existente ? existente.FechaCompletada : '',
-    Usuario: (state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre || '',
-    Papelera: false
-  };
   try{
-    await asegurarBackendPropio('saveRow', { table:'TAREAS', row });
-    toast('Guardado');
+    // Nota: se crea en el cuaderno "Tareas" de Organizador, sin fecha límite
+    // todavía (esa vive en un formato especial dentro del contenido de la
+    // nota — se define en Organizador para no arriesgar guardarla mal desde
+    // aquí). El campo de fecha de este formulario queda para una fase futura.
+    await callOrganizador('saveRow', { table:'NOTAS', row:{
+      ID: uid(), Fecha: new Date().toISOString(), Titulo: titulo,
+      Contenido: escapeHtml(document.getElementById('tar-notas').value.trim()),
+      Tags: '#task', Notebook: 'Tareas', Pinned: false, Papelera: false
+    }});
+    toast('Guardado en Organizador');
     closeModal('modal-tarea');
     cargarHorarioTareasRegistro();
   } catch(e){ toast('Error: '+e.message); }
@@ -1901,8 +1830,8 @@ async function confirmarSugerenciaIA(msgIdx, sugIdx){
       return;
     }
     if(s.modulo==='nota'){
-      if(!state.conexiones.notas){ toast('Conecta Notas en Configuración'); return; }
-      await callGAS(state.conexiones.notas, 'saveIdea', { contenido: c.Texto||'' });
+      if(!state.conexiones.notas || !state.organizadorSheetId){ toast('Conecta Organizador en Configuración'); return; }
+      await callOrganizador('saveRow', { table:'NOTAS', row:{ ID:uid(), Fecha:new Date().toISOString(), Titulo:(c.Texto||'').slice(0,60), Contenido:escapeHtml(c.Texto||''), Tags:'', Notebook:'', Pinned:false, Papelera:false } });
     } else if(s.modulo==='acuerdo'){
       if(!state.conexiones.acuerdos){ toast('Conecta Acuerdos en Configuración'); return; }
       await callGAS(state.conexiones.acuerdos, 'saveRow', { table:'ACUERDOS', row:{ Tipo:'acuerdo', Titulo:c.Titulo||'', Detalles:c.Detalles||'', Estado:'pendiente', Usuario:(state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre||'', Papelera:false } });
@@ -2122,7 +2051,7 @@ const CONEXIONES_DEFS = [
   { key:'comidas', label:'Comidas', hint:'' },
   { key:'acuerdos', label:'Acuerdos', hint:'' },
   { key:'ropa', label:'Closet', hint:'' },
-  { key:'notas', label:'Notas', hint:'' },
+  { key:'notas', label:'Organizador (notas, tareas, horario, hábitos)', hint:'' },
 ];
 function pintarConfigConexiones(){
   const cont = document.getElementById('cfg-conexiones-list');
@@ -2130,6 +2059,7 @@ function pintarConfigConexiones(){
     <div class="row disabled" style="flex-direction:column; align-items:stretch; gap:6px;">
       <div class="t-sub" style="font-weight:600; color:var(--text);">${c.label}</div>
       <input class="field" style="margin:0;" data-conn="${c.key}" placeholder="https://script.google.com/macros/s/..." value="${escapeHtml(c.key==='self' ? state.gasUrlPropia : (state.conexiones[c.key]||''))}">
+      ${c.key==='notas' ? `<input class="field" style="margin:0;" id="organizador-sheet-id" placeholder="ID de tu Google Sheet de Organizador" value="${escapeHtml(state.organizadorSheetId)}">` : ''}
     </div>
   `).join('');
 }
@@ -2145,8 +2075,10 @@ document.getElementById('btn-cfg-guardar-conexiones').addEventListener('click', 
     else nuevasConexiones[key] = val;
   });
   state.conexiones = nuevasConexiones;
+  state.organizadorSheetId = (document.getElementById('organizador-sheet-id')||{}).value?.trim() || '';
   localStorage.setItem(LS.conexiones, JSON.stringify(state.conexiones));
   localStorage.setItem(LS.gasUrlPropia, state.gasUrlPropia);
+  localStorage.setItem(LS.organizadorSheetId, state.organizadorSheetId);
   try{
     if(state.gasUrlPropia) await callGAS(state.gasUrlPropia, 'init');
     setBtnState(btn, 'saved', {saved:'Guardado'});
