@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v17 (chat IA como ventanita flotante: se arrastra, minimiza y maximiza; se reacomoda si queda fuera de pantalla) — GAS v6 -->
+<!-- App Completa — v18 (sugerencia "evento": hora legible en vez de ISO crudo, y errores de guardado visibles en la tarjeta) — GAS v6 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -652,7 +652,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Diecisiete — el chat de la IA ahora es una ventanita flotante que se arrastra, minimiza y maximiza';
+const VERSION_TXT = 'Dieciocho — la fecha del evento se ve legible (no el texto ISO crudo) y si falla guardar algo de la IA, el error se ve en la tarjeta';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -2086,6 +2086,33 @@ const SUGERENCIA_LABELS = {
   evento:'Evento (Calendar)', nota:'Nota', acuerdo:'Acuerdo', lista_compras:'Lista de compras',
   inventario_general:'Inventario general', gasto:'Gasto'
 };
+function horaCortaLocal(d){
+  return d.toLocaleTimeString('es-MX', { hour:'numeric', minute:'2-digit' });
+}
+function fechaHoraLarga(d){
+  return d.toLocaleDateString('es-MX', { weekday:'short', day:'numeric', month:'short' }) + ', ' + horaCortaLocal(d);
+}
+// Evento trae Inicio/Fin en ISO (los manda la IA) — se ven feo crudos
+// ("2026-08-25T16:30:00-06:00"), aquí se arman en un renglón "Cuándo"
+// legible. El resto de los módulos siguen mostrando sus campos tal cual.
+function camposSugerenciaHTML(s){
+  const c = s.campos || {};
+  if(s.modulo==='evento'){
+    const inicio = c.Inicio ? new Date(c.Inicio) : null;
+    const fin = c.Fin ? new Date(c.Fin) : null;
+    let cuando = '';
+    if(inicio && !isNaN(inicio)){
+      cuando = fechaHoraLarga(inicio);
+      if(fin && !isNaN(fin)) cuando += ' – ' + horaCortaLocal(fin);
+    }
+    return [
+      c.Titulo ? `<div class="campo">${escapeHtml(c.Titulo)}</div>` : '',
+      cuando ? `<div class="campo">🗓️ ${escapeHtml(cuando)}</div>` : '',
+      c.Ubicacion ? `<div class="campo">📍 ${escapeHtml(c.Ubicacion)}</div>` : ''
+    ].join('');
+  }
+  return Object.keys(c).filter(k=>c[k]).map(k=>`<div class="campo">${escapeHtml(k)}: ${escapeHtml(String(c[k]))}</div>`).join('');
+}
 function renderMensajesIA(){
   const cont = document.getElementById('ia-mensajes');
   cont.innerHTML = state.chatActivo.mensajes.map((m,i)=>{
@@ -2110,8 +2137,9 @@ function renderMensajesIA(){
       m.sugerencias.forEach((s,si)=>{
         html += `<div class="sugerencia-card ${s.hecha?'hecha':''}">
           <div class="t-headline">${SUGERENCIA_LABELS[s.modulo]||s.modulo} <span class="t-foot">(${s.confianza})</span></div>
-          ${Object.keys(s.campos||{}).filter(k=>s.campos[k]).map(k=>`<div class="campo">${escapeHtml(k)}: ${escapeHtml(String(s.campos[k]))}</div>`).join('')}
+          ${camposSugerenciaHTML(s)}
           ${s.hecha ? '<p class="t-foot">✓ Guardado</p>' : `<button class="btn ${s.modulo==='gasto'?'btn-secondary':'btn-primary'} btn-sm" style="margin-top:8px;" data-confirmar="${i}:${si}">${s.modulo==='gasto'?'Abrir Gastos':'Confirmar y guardar'}</button>`}
+          ${s.error ? `<p class="t-foot" style="color:var(--red); margin-top:6px;">⚠️ ${escapeHtml(s.error)}</p>` : ''}
         </div>`;
       });
     }
@@ -2217,6 +2245,12 @@ function reintentarMensajeIA(idx, usarClaude){
 async function confirmarSugerenciaIA(msgIdx, sugIdx){
   const s = state.chatActivo.mensajes[msgIdx].sugerencias[sugIdx];
   const c = s.campos || {};
+  s.error = null;
+  // El error queda ESCRITO en la tarjeta (no solo en el toast de abajo,
+  // que dura 2.6s y puede pasar desapercibido con la ventanita de la IA
+  // encima) — así, si algo falla, se ve claramente qué pasó y el botón
+  // sigue ahí para reintentar.
+  const marcarError = (msg)=>{ s.error = msg; renderMensajesIA(); toast(msg); };
   try{
     if(s.modulo==='gasto'){
       if(!state.conexiones.gastos || !state.gastosSesion){
@@ -2235,7 +2269,7 @@ async function confirmarSugerenciaIA(msgIdx, sugIdx){
       // es viejo y solo tenía lectura, Google responde 403 y se le pide
       // reconectar en vez de fallar en silencio.
       googleAccessToken = googleAccessToken || loadGoogleTokenFromStorage();
-      if(!googleAccessToken && !(await maybeRefreshGoogleToken())){ toast('Conecta Google Calendar (en Tu horario de hoy) para guardar este evento'); return; }
+      if(!googleAccessToken && !(await maybeRefreshGoogleToken())){ marcarError('Conecta Google Calendar (en Tu horario de hoy) para guardar este evento'); return; }
       const inicio = c.Inicio ? new Date(c.Inicio) : new Date();
       const fin = c.Fin ? new Date(c.Fin) : new Date(inicio.getTime()+60*60*1000);
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -2244,16 +2278,16 @@ async function confirmarSugerenciaIA(msgIdx, sugIdx){
       if(res.status===401 && await maybeRefreshGoogleToken()){
         res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', { method:'POST', headers:{ Authorization:'Bearer '+googleAccessToken, 'Content-Type':'application/json' }, body: JSON.stringify(bodyEvento) });
       }
-      if(res.status===403){ toast('Tu Calendar está conectado solo para lectura — reconéctalo (Tu horario de hoy) para poder agregar eventos'); return; }
-      if(!res.ok){ toast('Error al guardar el evento en Calendar ('+res.status+')'); return; }
+      if(res.status===403){ marcarError('Tu Calendar está conectado solo para lectura — reconéctalo (Tu horario de hoy) para poder agregar eventos'); return; }
+      if(!res.ok){ marcarError('Error al guardar el evento en Calendar ('+res.status+')'); return; }
     } else if(s.modulo==='nota'){
-      if(!state.conexiones.notas || !state.organizadorSheetId){ toast('Conecta Organizador en Configuración'); return; }
+      if(!state.conexiones.notas || !state.organizadorSheetId){ marcarError('Conecta Organizador en Configuración'); return; }
       await callOrganizador('saveRow', { table:'NOTAS', row:{ ID:uid(), Fecha:new Date().toISOString(), Titulo:(c.Texto||'').slice(0,60), Contenido:escapeHtml(c.Texto||''), Tags:'', Notebook:'', Pinned:false, Papelera:false } });
     } else if(s.modulo==='acuerdo'){
-      if(!state.conexiones.acuerdos){ toast('Conecta Acuerdos en Configuración'); return; }
+      if(!state.conexiones.acuerdos){ marcarError('Conecta Acuerdos en Configuración'); return; }
       await callGAS(state.conexiones.acuerdos, 'saveRow', { table:'ACUERDOS', row:{ Tipo:'acuerdo', Titulo:c.Titulo||'', Detalles:c.Detalles||'', Estado:'pendiente', Usuario:(state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre||'', Papelera:false } });
     } else if(s.modulo==='lista_compras'){
-      if(!state.conexiones.comidas){ toast('Conecta Comidas en Configuración'); return; }
+      if(!state.conexiones.comidas){ marcarError('Conecta Comidas en Configuración'); return; }
       await callGAS(state.conexiones.comidas, 'saveRow', { table:'LISTA_COMPRAS', row:{ Nombre:c.Nombre||'', Categoria:c.Categoria||'', Cantidad:c.Cantidad||'', Comprado:false, Papelera:false } });
     } else if(s.modulo==='inventario_general'){
       await asegurarBackendPropio('saveRow', { table:'INVENTARIO_GENERAL', row:{ Nombre:c.Nombre||'', Categoria:c.Categoria||'General', Caracteristicas:c.Caracteristicas||'', Precio:c.Precio||'', Cantidad:1, Papelera:false } });
@@ -2262,7 +2296,7 @@ async function confirmarSugerenciaIA(msgIdx, sugIdx){
     renderMensajesIA();
     await persistirChatActivo();
     toast('Guardado en ' + (SUGERENCIA_LABELS[s.modulo]||s.modulo));
-  } catch(e){ toast('Error: ' + e.message); }
+  } catch(e){ marcarError('Error: ' + e.message); }
 }
 
 /* ---- Confirmar gasto detectado por la IA antes de guardarlo en Gastos ---- */
