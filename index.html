@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v29 (Calendario/Home reusan los datos de Organizador ~45s en vez de repedirlos en cada cambio de pestaña o fecha) — GAS v7 -->
+<!-- App Completa — v30 (mantener presionada una franja de "Tu horario de hoy"/Calendario Día más de 1.2s la abre para editar u eliminar) — GAS v7 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -151,10 +151,12 @@ header.topbar .user-chip .av{width:26px; height:26px; border-radius:50%; backgro
 .cal-plan{background:var(--bg-elev); border-radius:var(--radius-lg); box-shadow:var(--shadow); flex:1; min-width:0;}
 .cal-registro{width:112px; flex-shrink:0; background:var(--bg-elev); border-radius:var(--radius-md); box-shadow:var(--shadow);}
 .cal-hline{position:absolute; left:0; right:0; border-top:1px solid var(--separator-op);}
-.cal-item{position:absolute; left:6px; right:6px; background:var(--accent-soft); border-left:3px solid var(--accent); border-radius:8px; padding:4px 8px; display:flex; align-items:center; gap:6px; overflow:hidden; cursor:pointer;}
+.cal-item{position:absolute; left:6px; right:6px; background:var(--accent-soft); border-left:3px solid var(--accent); border-radius:8px; padding:4px 8px; display:flex; align-items:center; gap:6px; overflow:hidden; cursor:pointer; touch-action:pan-y;}
 .cal-item .hora{font-size:10px; font-weight:700; color:var(--accent);}
 .cal-item .titulo{font-size:13px; line-height:1.2; font-weight:500;}
 .cal-item .check-toggle{width:22px; height:22px; font-size:12px;}
+.cal-item .press-fill{position:absolute; left:0; bottom:0; height:3px; width:0%; background:var(--accent); border-radius:0 0 8px 8px;}
+.cal-item.pressing .press-fill{width:100%; transition:width 1.2s linear;}
 .cal-reg-item{position:absolute; left:4px; right:4px; background:var(--accent-soft2,#efedfb); border-left:3px solid var(--general); border-radius:6px; padding:3px 6px; overflow:hidden;}
 .cal-reg-item .hora{font-size:9px; font-weight:700; color:var(--general);}
 .cal-reg-item .titulo{font-size:11px; font-weight:500; line-height:1.15;}
@@ -642,6 +644,27 @@ textarea.field{resize:vertical; min-height:70px;}
   </div>
 </div>
 
+<!-- ============ MODAL editar franja de "Tu horario de hoy" (mantener presionado) ============ -->
+<div class="modal-overlay" id="modal-horario-item">
+  <div class="modal modal-wrap">
+    <button class="close-x" data-close-modal="modal-horario-item">✕</button>
+    <h2 class="t-title">Editar franja</h2>
+    <p class="t-sub" style="margin-top:6px;">Esto edita tu rutina de Organizador (se repite los mismos días de la semana), no solo hoy.</p>
+    <input type="hidden" id="hor-item-id">
+    <div style="margin-top:10px;">
+      <input id="hor-item-actividad" class="field" placeholder="Actividad">
+      <label class="t-caption" style="display:block; margin:8px 0 4px;">Hora</label>
+      <input type="time" id="hor-item-hora" class="field">
+      <textarea id="hor-item-obs" class="field" placeholder="Observaciones (opcional)" style="margin-top:8px;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="hor-item-eliminar" style="width:auto;">🗑️ Eliminar</button>
+      <button class="btn btn-secondary" id="hor-item-cancelar">Cancelar</button>
+      <button class="btn btn-primary" id="hor-item-guardar">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MODAL lugar (Mapa) ============ -->
 <div class="modal-overlay" id="modal-lugar">
   <div class="modal modal-wrap">
@@ -701,7 +724,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Veintinueve — Calendario y Home ya no vuelven a pedir todo desde cero cada vez que cambias de pestaña o fecha, solo cuando de verdad hace falta';
+const VERSION_TXT = 'Treinta — mantén presionada una franja de tu horario en Hoy o en Calendario Día más de 1.2 segundos para editarla o eliminarla';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1547,6 +1570,7 @@ async function renderHorarioDesdeOrganizador(){
     e.stopPropagation();
     toggleHorarioHabito(itemsSinHora[parseInt(b.dataset.calCheckSh)], alTogglear);
   }));
+  activarPresionLarga(cont, itemsConHora);
 
   // Se desplaza a la línea de "ahora" solo la primera vez que carga el
   // Home — así se ve de entrada "dónde vas" sin tener que buscarlo, pero
@@ -1584,6 +1608,72 @@ async function toggleHorarioHabito(it, alTerminar){
   } catch(e){ toast('Error: '+e.message); }
 }
 function habitoLigadoAHorario(habitoId, horario){ return (horario||[]).some(h=>h.HabitoID===habitoId); }
+
+// Mantener presionada una franja del Plan (Hoy y Calendario Día) más de
+// 1.2s abre editar/eliminar — pedido explícito: "si dejo presionado mas de
+// 1.2 segundos se llena la barra". Solo aplica a tipo:'horario' (filas de
+// la tabla HORARIO de Organizador): los hábitos y los eventos de Google no
+// tienen aquí un formulario de edición propio (se editan desde su app de
+// origen), así que ahí el long-press simplemente no hace nada.
+function activarPresionLarga(cont, itemsConHora){
+  cont.querySelectorAll('.cal-item[data-cal-idx]').forEach(el=>{
+    const it = itemsConHora[parseInt(el.dataset.calIdx)];
+    if(!it || it.tipo!=='horario') return;
+    let timer = null;
+    const cancelar = ()=>{ clearTimeout(timer); timer=null; el.classList.remove('pressing'); };
+    el.addEventListener('pointerdown', (e)=>{
+      if(e.target.closest('.check-toggle')) return;
+      el.classList.add('pressing');
+      timer = setTimeout(()=>{ el.classList.remove('pressing'); timer=null; abrirModalEditarHorario(it); }, 1200);
+    });
+    el.addEventListener('pointerup', cancelar);
+    el.addEventListener('pointercancel', cancelar);
+    el.addEventListener('pointerleave', cancelar);
+    el.addEventListener('contextmenu', (e)=> e.preventDefault());
+  });
+}
+function abrirModalEditarHorario(it){
+  const original = (state.organizadorData && state.organizadorData.horario || []).find(h=>h.ID===it.id);
+  if(!original){ toast('No se encontró esa franja en Organizador'); return; }
+  document.getElementById('hor-item-id').value = original.ID;
+  document.getElementById('hor-item-actividad').value = original.Actividad || '';
+  document.getElementById('hor-item-hora').value = original.Hora || '';
+  document.getElementById('hor-item-obs').value = original.Observaciones || '';
+  openModal('modal-horario-item');
+}
+document.getElementById('hor-item-cancelar').addEventListener('click', ()=> closeModal('modal-horario-item'));
+document.getElementById('hor-item-guardar').addEventListener('click', async function(){
+  const id = document.getElementById('hor-item-id').value;
+  const actividad = document.getElementById('hor-item-actividad').value.trim();
+  const hora = document.getElementById('hor-item-hora').value;
+  if(!actividad){ toast('Ponle una actividad'); return; }
+  if(!hora){ toast('Ponle una hora'); return; }
+  const original = (state.organizadorData && state.organizadorData.horario || []).find(h=>h.ID===id);
+  if(!original){ toast('No se encontró esa franja en Organizador'); return; }
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Guardando…'});
+  try{
+    const row = Object.assign({}, original, { Actividad: actividad, Hora: hora, Observaciones: document.getElementById('hor-item-obs').value.trim() });
+    await callOrganizador('saveRow', { table:'HORARIO', row });
+    toast('Guardado en Organizador');
+    closeModal('modal-horario-item');
+    cargarHorarioTareasRegistro(true);
+    if(state.vista==='calendario') pintarCalendario(true);
+  } catch(e){ toast('Error: '+e.message); }
+  setBtnState(btn, 'idle', {idle:'Guardar'});
+});
+document.getElementById('hor-item-eliminar').addEventListener('click', function(){
+  const id = document.getElementById('hor-item-id').value;
+  pedirConfirmacion('¿Eliminar esta franja?', 'Se borra de tu horario en Organizador (se puede recuperar desde su papelera).', async ()=>{
+    try{
+      await callOrganizador('deleteRow', { table:'HORARIO', id });
+      toast('Eliminado');
+      closeModal('modal-horario-item');
+      cargarHorarioTareasRegistro(true);
+      if(state.vista==='calendario') pintarCalendario(true);
+    } catch(e){ toast('Error: '+e.message); }
+  });
+});
 document.getElementById('btn-editar-rutina').addEventListener('click', ()=> irApp('notas', '#mi-horario'));
 document.getElementById('btn-horario-calendario').addEventListener('click', ()=> irAVista('calendario'));
 document.getElementById('btn-horario-nuevo-evento').addEventListener('click', ()=> irApp('notas', '#nuevo-evento'));
@@ -1742,12 +1832,13 @@ function construirHtmlDiaDosColumnas(items, registro, fechaRef, escalaPxMin){
     const it = p.it;
     const left = `calc(6px + (100% - 12px) * ${p.carril} / ${p.totalCarriles})`;
     const width = `calc((100% - 12px) / ${p.totalCarriles} - 3px)`;
-    planHtml += `<div class="cal-item" style="top:${p.top}px; height:${p.alto}px; left:${left}; width:${width}; right:auto;">
+    planHtml += `<div class="cal-item" data-cal-idx="${i}" style="top:${p.top}px; height:${p.alto}px; left:${left}; width:${width}; right:auto;">
       <div style="flex:1; min-width:0;">
         <div class="hora">${escapeHtml(it.hora)}</div>
         <div class="titulo" style="${it.hecho?'text-decoration:line-through;opacity:.55;':''}">${escapeHtml(it.actividad||'')}</div>
       </div>
       <button class="check-toggle ${it.hecho?'on':''}" data-cal-check="${i}">${it.hecho?'✓':''}</button>
+      <div class="press-fill"></div>
     </div>`;
   });
 
@@ -1817,6 +1908,7 @@ async function pintarCalendarioDia(){
     e.stopPropagation();
     toggleHorarioHabito(itemsSinHora[parseInt(b.dataset.calCheckSh)], alTogglear);
   }));
+  activarPresionLarga(cont, itemsConHora);
 
   if(esHoy && !window.__acCalendarioYaCentrado){
     window.__acCalendarioYaCentrado = true;
