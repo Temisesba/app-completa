@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v28 (Calendario más rápido: Semana pasó de 7 llamadas a Calendar a 1 sola) — GAS v7 -->
+<!-- App Completa — v29 (Calendario/Home reusan los datos de Organizador ~45s en vez de repedirlos en cada cambio de pestaña o fecha) — GAS v7 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -701,7 +701,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Veintiocho — la vista Semana del Calendario ya no hace 7 llamadas a Calendar en fila, ahora es 1 sola — mucho más rápida';
+const VERSION_TXT = 'Veintinueve — Calendario y Home ya no vuelven a pedir todo desde cero cada vez que cambias de pestaña o fecha, solo cuando de verdad hace falta';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1292,7 +1292,7 @@ async function construirColapsableCloset(){
 function ayerISO(){ const d=new Date(); d.setDate(d.getDate()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function horaCorta(h){ return (h||'').toString().slice(0,5); }
 
-async function cargarHorarioTareasRegistro(){
+async function cargarHorarioTareasRegistro(forzar){
   const contH = document.getElementById('horario-list'), contT = document.getElementById('tareas-list');
   if(!state.conexiones.notas || !state.organizadorSheetId){
     const msg = '<div class="empty-row">Conecta Organizador (URL + ID de Sheet) en Configuración → Conexiones</div>';
@@ -1305,11 +1305,18 @@ async function cargarHorarioTareasRegistro(){
   // reiniciaba" con cada toque, sobre todo en celular con red más lenta).
   // Si ya había contenido, se queda visible mientras se recarga por
   // detrás y solo se reemplaza cuando el dato nuevo ya está listo.
-  if(!contH.children.length) contH.innerHTML = '<div class="empty-row">Cargando…</div>';
-  if(!contT.children.length) contT.innerHTML = '<div class="empty-row">Cargando…</div>';
+  // getAll de Organizador puede tardar varios segundos (arranque en frío
+  // de Apps Script) — se reusa el mismo caché de CAL_CACHE_MS que usa el
+  // Calendario en vez de volver a pedirlo si ya se cargó hace poco.
+  const yaCargado = state.organizadorData && (Date.now()-(state.organizadorDataFetchedAt||0)) < CAL_CACHE_MS;
+  if(!contH.children.length && !yaCargado) contH.innerHTML = '<div class="empty-row">Cargando…</div>';
+  if(!contT.children.length && !yaCargado) contT.innerHTML = '<div class="empty-row">Cargando…</div>';
   try{
-    const data = await callOrganizador('getAll');
-    state.organizadorData = data.data;
+    if(!yaCargado || forzar){
+      const data = await callOrganizador('getAll');
+      state.organizadorData = data.data;
+      state.organizadorDataFetchedAt = Date.now();
+    }
     await renderHorarioDesdeOrganizador();
     renderTareasDesdeOrganizador();
   } catch(e){
@@ -1531,7 +1538,7 @@ async function renderHorarioDesdeOrganizador(){
   const { html, itemsConHora, itemsSinHora } = construirHtmlDiaDosColumnas(items, registro, new Date(), 1.15);
   cont.innerHTML = html;
 
-  const alTogglear = ()=> cargarHorarioTareasRegistro();
+  const alTogglear = ()=> cargarHorarioTareasRegistro(true);
   cont.querySelectorAll('[data-cal-check]').forEach(b=> b.addEventListener('click', (e)=>{
     e.stopPropagation();
     toggleHorarioHabito(itemsConHora[parseInt(b.dataset.calCheck)], alTogglear);
@@ -1629,7 +1636,15 @@ function actualizarTituloFechaCalendario(){
   }
   document.getElementById('cal-fecha-titulo').textContent = texto.charAt(0).toUpperCase()+texto.slice(1);
 }
-async function pintarCalendario(){
+// Apps Script puede tardar VARIOS SEGUNDOS en responder getAll (arranque
+// en frío del script — medido hasta 15s en una cuenta chica, no es cosa
+// de cuántas notas haya). Cambiar entre Día/Semana/Mes o navegar fechas
+// dentro del Calendario NO necesita datos más frescos que hace unos
+// segundos — antes cada cambio de pestaña volvía a pedir TODO desde cero.
+// Ahora se reusa lo ya cargado si tiene menos de CAL_CACHE_MS, y solo un
+// cambio real (marcar un check, forzar=true) obliga a pedirlo de nuevo.
+const CAL_CACHE_MS = 45000;
+async function pintarCalendario(forzar){
   construirChipsCalendario();
   actualizarTituloFechaCalendario();
   const cont = document.getElementById('cal-content');
@@ -1642,11 +1657,15 @@ async function pintarCalendario(){
   // vuelve a vaciar a "Cargando…" — se queda visible mientras llega el
   // dato nuevo, para que no se sienta como que la pantalla se reinicia
   // con cada toque.
-  if(!cont.children.length) cont.innerHTML = '<div class="empty-row">Cargando…</div>';
+  const yaCargado = state.organizadorData && (Date.now()-(state.organizadorDataFetchedAt||0)) < CAL_CACHE_MS;
+  if(!cont.children.length && !yaCargado) cont.innerHTML = '<div class="empty-row">Cargando…</div>';
   try{
-    const data = await callOrganizador('getAll');
-    state.organizadorData = data.data;
-    pintarEstadoGoogleCalendar();
+    if(!yaCargado || forzar){
+      const data = await callOrganizador('getAll');
+      state.organizadorData = data.data;
+      state.organizadorDataFetchedAt = Date.now();
+      pintarEstadoGoogleCalendar();
+    }
     if(state.calModo==='dia') await pintarCalendarioDia();
     else if(state.calModo==='semana') await pintarCalendarioSemana();
     else await pintarCalendarioMes();
@@ -1789,7 +1808,7 @@ async function pintarCalendarioDia(){
   // y repone el scroll de #views (el que de verdad se mueve, cal-content
   // no tiene su propio overflow) para no perder el lugar en una columna
   // tan alta.
-  const alTogglear = async ()=>{ const v = document.getElementById('views'); const y = v.scrollTop; await pintarCalendario(); v.scrollTop = y; };
+  const alTogglear = async ()=>{ const v = document.getElementById('views'); const y = v.scrollTop; await pintarCalendario(true); v.scrollTop = y; };
   cont.querySelectorAll('[data-cal-check]').forEach(b=> b.addEventListener('click', (e)=>{
     e.stopPropagation();
     toggleHorarioHabito(itemsConHora[parseInt(b.dataset.calCheck)], alTogglear);
@@ -1944,7 +1963,7 @@ function renderTareasDesdeOrganizador(){
     n.Tags = tags.join(' ');
     renderTareasDesdeOrganizador(); // optimista
     try{ await callOrganizador('saveRow', { table:'NOTAS', row:n, expectedFechaEdicion:n.FechaEdicion }); toast('Tarea completada'); }
-    catch(err){ toast('Error: '+err.message); cargarHorarioTareasRegistro(); }
+    catch(err){ toast('Error: '+err.message); cargarHorarioTareasRegistro(true); }
   }));
 }
 document.getElementById('btn-tarea-agregar').addEventListener('click', ()=> abrirModalTarea(null));
@@ -1993,7 +2012,7 @@ document.getElementById('tar-guardar').addEventListener('click', async function(
     }});
     toast('Guardado en Organizador');
     closeModal('modal-tarea');
-    cargarHorarioTareasRegistro();
+    cargarHorarioTareasRegistro(true);
   } catch(e){ toast('Error: '+e.message); }
   setBtnState(btn, 'idle', {idle:'Guardar'});
 });
