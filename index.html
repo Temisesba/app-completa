@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v27 (fix: marcar un check ya no vacía y reconstruye toda la vista, se sentía como reinicio) — GAS v7 -->
+<!-- App Completa — v28 (Calendario más rápido: Semana pasó de 7 llamadas a Calendar a 1 sola) — GAS v7 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -701,7 +701,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Veintisiete — marcar un check ya no vacía y reconstruye toda la pantalla, se sentía como que la app se reiniciaba';
+const VERSION_TXT = 'Veintiocho — la vista Semana del Calendario ya no hace 7 llamadas a Calendar en fila, ahora es 1 sola — mucho más rápida';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1435,7 +1435,12 @@ const DIA_CODES = ['D','L','M','X','J','V','S']; // getDay(): 0=Dom..6=Sáb, igu
 // cualquiera (no solo hoy) — la usa tanto el Home ("Tu horario de hoy",
 // siempre con `new Date()`) como el Calendario nuevo (Día/Semana/Mes,
 // navegando fecha). Nada de DOM aquí, solo datos.
-async function construirItemsDelDia(fecha){
+// `eventosPrefetched`: opcional — si quien llama YA trae los eventos de
+// Google de ese día (ej. de una sola consulta de rango para toda una
+// semana/mes en vez de una por día), se pasan aquí y esta función no
+// vuelve a pedirlos. Pensado para que la vista Semana no haga 7 llamadas
+// a Calendar en serie (antes tardaba 7-10s) — ahora una sola de rango.
+async function construirItemsDelDia(fecha, eventosPrefetched){
   const d = state.organizadorData || {};
   const code = DIA_CODES[fecha.getDay()];
   const diaStr = fecha.toDateString();
@@ -1455,10 +1460,13 @@ async function construirItemsDelDia(fecha){
     return { tipo:'habito', id:h.ID, hora:'', actividad:(h.Emoji?h.Emoji+' ':'🎯 ')+h.Nombre, obs:'', hecho:!!real.logId, horaReal:real.horaReal, logId:real.logId };
   });
 
-  const dayStart = new Date(fecha); dayStart.setHours(0,0,0,0);
-  const dayEnd = new Date(fecha); dayEnd.setHours(23,59,59,999);
-  let eventos = [];
-  try{ eventos = await fetchEventosGoogleRango(dayStart, dayEnd); } catch(e){ /* sin Calendar conectado, se omite */ }
+  let eventos = eventosPrefetched;
+  if(!eventos){
+    const dayStart = new Date(fecha); dayStart.setHours(0,0,0,0);
+    const dayEnd = new Date(fecha); dayEnd.setHours(23,59,59,999);
+    eventos = [];
+    try{ eventos = await fetchEventosGoogleRango(dayStart, dayEnd); } catch(e){ /* sin Calendar conectado, se omite */ }
+  }
   // Los eventos de Google también se pueden marcar como hechos — pedido
   // explícito para poder ir comparando lo planeado con lo que de verdad se
   // hizo, igual que ya se podía con horario/hábitos. Reusa HORARIO_LOG tal
@@ -1806,8 +1814,16 @@ async function pintarCalendarioSemana(){
   const letras = ['D','L','M','X','J','V','S'];
   const hoyStr = new Date().toDateString();
 
-  const itemsPorDia = [];
-  for(const d of dias) itemsPorDia.push(await construirItemsDelDia(d));
+  // Antes: 7 llamadas a Calendar en serie (una por día, ~7-10s en total —
+  // pedido explícito de Temis de que no tardara tanto). Ahora: UNA sola
+  // consulta de rango para toda la semana, repartida por día en JS.
+  const finSemana = new Date(dias[6]); finSemana.setHours(23,59,59,999);
+  let eventosSemana = [];
+  try{ eventosSemana = await fetchEventosGoogleRango(inicioSemana, finSemana); } catch(e){ /* sin Calendar conectado, se omite */ }
+  const eventosPorDiaSemana = {};
+  eventosSemana.forEach(e=>{ if(!e.fechaObj) return; const key=e.fechaObj.toDateString(); (eventosPorDiaSemana[key]=eventosPorDiaSemana[key]||[]).push(e); });
+
+  const itemsPorDia = await Promise.all(dias.map(d => construirItemsDelDia(d, eventosPorDiaSemana[d.toDateString()]||[])));
 
   const tiraHtml = dias.map((d,i)=>{
     const esHoy = d.toDateString()===hoyStr;
@@ -1882,7 +1898,9 @@ async function pintarCalendarioMes(){
     </button>
   `).join('');
 
-  const itemsDiaSel = await construirItemsDelDia(diaSel);
+  // Reusa los eventos que ya se trajeron para todo el mes (arriba) en vez
+  // de volver a pedirle a Calendar solo por el día seleccionado.
+  const itemsDiaSel = await construirItemsDelDia(diaSel, eventosPorDia[diaSelStr]||[]);
   const tituloSel = (diaSelStr===hoyStr?'Hoy · ':'') + diaSel.toLocaleDateString('es-MX',{weekday:'long', day:'numeric', month:'long'});
   const agendaSel = itemsDiaSel.length ? itemsDiaSel.map(it=>`
     <div class="row disabled">
