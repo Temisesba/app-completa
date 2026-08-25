@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v33 (Tareas con hora ya aparecen en Tu horario de hoy/Calendario; lista de Tareas agrupada por Atrasadas/Hoy/Próximas/Sin fecha, sin tope de 10) — GAS v7 -->
+<!-- App Completa — v34 (Fase A: clic en un evento de Google Calendar lo abre para editar/eliminar con editor propio, PATCH/DELETE directo a Calendar) — GAS v7 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -668,6 +668,33 @@ textarea.field{resize:vertical; min-height:70px;}
   </div>
 </div>
 
+<!-- ============ MODAL editar evento de Google Calendar (clic en Calendario) ============ -->
+<div class="modal-overlay" id="modal-evento-google">
+  <div class="modal modal-wrap">
+    <button class="close-x" data-close-modal="modal-evento-google">✕</button>
+    <h2 class="t-title">Editar evento</h2>
+    <p class="t-sub" style="margin-top:6px;">Esto edita el evento en tu Google Calendar de verdad.</p>
+    <input type="hidden" id="evg-id">
+    <div style="margin-top:10px;">
+      <input id="evg-titulo" class="field" placeholder="Título">
+      <div style="display:flex; gap:10px;">
+        <input type="date" id="evg-fecha" class="field" style="flex:1;">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Hora inicio</label><input type="time" id="evg-hora-inicio" class="field"></div>
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Hora fin</label><input type="time" id="evg-hora-fin" class="field"></div>
+      </div>
+      <input id="evg-ubicacion" class="field" placeholder="Ubicación (opcional)" style="margin-top:8px;">
+      <textarea id="evg-descripcion" class="field" placeholder="Descripción (opcional)" style="margin-top:8px;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="evg-eliminar" style="width:auto;">🗑️ Eliminar</button>
+      <button class="btn btn-secondary" id="evg-cancelar">Cancelar</button>
+      <button class="btn btn-primary" id="evg-guardar">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MODAL lugar (Mapa) ============ -->
 <div class="modal-overlay" id="modal-lugar">
   <div class="modal modal-wrap">
@@ -727,7 +754,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Treinta y tres — las tareas con hora ya aparecen en Tu horario de hoy y en Calendario, y la lista de Tareas ahora se agrupa por Atrasadas/Hoy/Próximas/Sin fecha (sin límite de 10)';
+const VERSION_TXT = 'Treinta y cuatro — dar clic a un evento de Google Calendar ahora lo abre para editar u eliminar, con editor propio';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1466,12 +1493,20 @@ async function fetchEventosGoogleRango(desde, hasta){
   const data = await res.json();
   return (data.items||[]).map(ev=>{
     const inicio = ev.start && ev.start.dateTime ? new Date(ev.start.dateTime) : null;
+    const fin = ev.end && ev.end.dateTime ? new Date(ev.end.dateTime) : null;
     return {
       id: ev.id,
       fechaObj: inicio,
+      finObj: fin,
       hora: inicio ? horaCorta(inicio.toTimeString()) : '',
       actividad: '📅 '+(ev.summary||'(sin título)'),
-      obs: ev.location||''
+      obs: ev.location||'',
+      // Guardados sin transformar — el editor de la Fase A los necesita tal
+      // cual para precargar el formulario y para mandar de vuelta un PATCH
+      // que no pierda nada que Google ya tenía.
+      tituloOriginal: ev.summary||'',
+      ubicacionOriginal: ev.location||'',
+      descripcionOriginal: ev.description||''
     };
   });
 }
@@ -1605,6 +1640,7 @@ async function renderHorarioDesdeOrganizador(){
     toggleHorarioHabito(itemsSinHora[parseInt(b.dataset.calCheckSh)], alTogglear);
   }));
   activarPresionLarga(cont, itemsConHora);
+  activarClicEventoGoogle(cont, itemsConHora);
 
   // Se desplaza a la línea de "ahora" solo la primera vez que carga el
   // Home — así se ve de entrada "dónde vas" sin tener que buscarlo, pero
@@ -1718,6 +1754,90 @@ document.getElementById('hor-item-eliminar').addEventListener('click', function(
       await callOrganizador('deleteRow', { table:'HORARIO', id });
       toast('Eliminado');
       closeModal('modal-horario-item');
+      cargarHorarioTareasRegistro(true);
+      if(state.vista==='calendario') pintarCalendario(true);
+    } catch(e){ toast('Error: '+e.message); }
+  });
+});
+// Clic (no mantener presionado — los eventos de Google no usan esa
+// convención, y ya no tenían NINGÚN manejador antes de esto) sobre un evento
+// de Google Calendar en el Plan: abre un editor propio que escribe de vuelta
+// directo a Google Calendar (PATCH/DELETE), separado del editor de franjas
+// de horario (que sigue viviendo solo en Organizador vía callOrganizador).
+function activarClicEventoGoogle(cont, itemsConHora){
+  cont.querySelectorAll('.cal-item[data-cal-idx]').forEach(el=>{
+    const it = itemsConHora[parseInt(el.dataset.calIdx)];
+    if(!it || it.tipo!=='evento') return;
+    el.addEventListener('click', (e)=>{
+      if(e.target.closest('.check-toggle')) return;
+      abrirModalEditarEventoGoogle(it);
+    });
+  });
+}
+function fechaLocalISO(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function abrirModalEditarEventoGoogle(it){
+  document.getElementById('evg-id').value = it.id;
+  document.getElementById('evg-titulo').value = it.tituloOriginal || '';
+  const inicio = it.fechaObj ? new Date(it.fechaObj) : new Date();
+  const fin = it.finObj ? new Date(it.finObj) : new Date(inicio.getTime()+30*60000);
+  document.getElementById('evg-fecha').value = fechaLocalISO(inicio);
+  document.getElementById('evg-hora-inicio').value = horaCorta(inicio.toTimeString());
+  document.getElementById('evg-hora-fin').value = horaCorta(fin.toTimeString());
+  document.getElementById('evg-ubicacion').value = it.ubicacionOriginal || '';
+  document.getElementById('evg-descripcion').value = it.descripcionOriginal || '';
+  openModal('modal-evento-google');
+}
+document.getElementById('evg-cancelar').addEventListener('click', ()=> closeModal('modal-evento-google'));
+async function llamarGoogleCalendarConReintento(eventId, metodo, body){
+  googleAccessToken = googleAccessToken || loadGoogleTokenFromStorage();
+  if(!googleAccessToken && !(await maybeRefreshGoogleToken())) throw new Error('Conecta Google Calendar primero');
+  const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events/'+encodeURIComponent(eventId);
+  const opciones = { method:metodo, headers:{ Authorization:'Bearer '+googleAccessToken } };
+  if(body){ opciones.headers['Content-Type']='application/json'; opciones.body = JSON.stringify(body); }
+  let res = await fetch(url, opciones);
+  if(res.status===401 && await maybeRefreshGoogleToken()){
+    opciones.headers.Authorization = 'Bearer '+googleAccessToken;
+    res = await fetch(url, opciones);
+  }
+  if(!res.ok){ const t = await res.text().catch(()=>''); throw new Error('Google Calendar: '+res.status+' '+t.slice(0,120)); }
+  return res.status===204 ? null : res.json();
+}
+document.getElementById('evg-guardar').addEventListener('click', async function(){
+  const id = document.getElementById('evg-id').value;
+  const titulo = document.getElementById('evg-titulo').value.trim();
+  const fecha = document.getElementById('evg-fecha').value;
+  const horaIni = document.getElementById('evg-hora-inicio').value;
+  const horaFin = document.getElementById('evg-hora-fin').value;
+  if(!titulo){ toast('Ponle un título'); return; }
+  if(!fecha || !horaIni || !horaFin){ toast('Ponle fecha y horas'); return; }
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Guardando…'});
+  try{
+    const zona = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const body = {
+      summary: titulo,
+      location: document.getElementById('evg-ubicacion').value.trim(),
+      description: document.getElementById('evg-descripcion').value.trim(),
+      start: { dateTime: fecha+'T'+horaIni+':00', timeZone: zona },
+      end: { dateTime: fecha+'T'+horaFin+':00', timeZone: zona }
+    };
+    await llamarGoogleCalendarConReintento(id, 'PATCH', body);
+    toast('Evento actualizado');
+    closeModal('modal-evento-google');
+    cargarHorarioTareasRegistro(true);
+    if(state.vista==='calendario') pintarCalendario(true);
+  } catch(e){ toast('Error: '+e.message); }
+  setBtnState(btn, 'idle', {idle:'Guardar'});
+});
+document.getElementById('evg-eliminar').addEventListener('click', function(){
+  const id = document.getElementById('evg-id').value;
+  pedirConfirmacion('¿Eliminar este evento?', 'Se borra directo de tu Google Calendar.', async ()=>{
+    try{
+      await llamarGoogleCalendarConReintento(id, 'DELETE');
+      toast('Eliminado');
+      closeModal('modal-evento-google');
       cargarHorarioTareasRegistro(true);
       if(state.vista==='calendario') pintarCalendario(true);
     } catch(e){ toast('Error: '+e.message); }
@@ -1958,6 +2078,7 @@ async function pintarCalendarioDia(){
     toggleHorarioHabito(itemsSinHora[parseInt(b.dataset.calCheckSh)], alTogglear);
   }));
   activarPresionLarga(cont, itemsConHora);
+  activarClicEventoGoogle(cont, itemsConHora);
 
   if(esHoy && !window.__acCalendarioYaCentrado){
     window.__acCalendarioYaCentrado = true;
