@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v31 (Inventario General ahora vive en Gastos: Alacena+Ropa+General en un solo lugar) — GAS v7 -->
+<!-- App Completa — v32 (Inventario General: arreglo de precio que no se veía + campo Tienda nuevo) — GAS v7 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -558,16 +558,18 @@ textarea.field{resize:vertical; min-height:70px;}
       <input id="inv-nombre" class="field" placeholder="Nombre (ej. Silla de escritorio)">
       <select id="inv-categoria" class="field"></select>
       <textarea id="inv-caracteristicas" class="field" placeholder="Características (color, marca, estado, dónde está...)"></textarea>
-      <div style="display:flex; gap:10px;">
-        <input id="inv-cantidad" class="field" type="number" min="1" placeholder="Cantidad" value="1">
-        <input id="inv-precio" class="field" type="number" min="0" step="0.01" placeholder="Precio" style="flex:1;">
-        <select id="inv-precio-moneda" class="field" style="width:84px; flex-shrink:0;"><option>MXN</option><option>JPY</option><option>USD</option></select>
+      <div style="display:flex; gap:8px;">
+        <input id="inv-cantidad" class="field" type="number" min="1" placeholder="Cant." value="1" style="width:56px; flex-shrink:0;">
+        <input id="inv-precio" class="field" type="number" min="0" step="0.01" placeholder="Precio" style="flex:1; min-width:0;">
+        <select id="inv-precio-moneda" class="field" style="width:80px; flex-shrink:0;"><option>MXN</option><option>JPY</option><option>USD</option></select>
       </div>
       <div style="display:flex; gap:6px;">
         <input id="inv-codigo" class="field" placeholder="Código de barras (opcional)" style="flex:1;">
         <button type="button" class="btn btn-secondary" style="width:auto;" id="inv-btn-escanear" title="Escanear código">📷</button>
       </div>
-      <input id="inv-ubicacion" class="field" list="inv-ubicaciones-datalist" placeholder="Ubicación (ej. Recámara)" autocomplete="off">
+      <input id="inv-tienda" class="field" list="inv-tiendas-datalist" placeholder="Tienda (ej. Amazon, Temu...)" autocomplete="off">
+      <datalist id="inv-tiendas-datalist"></datalist>
+      <input id="inv-ubicacion" class="field" list="inv-ubicaciones-datalist" placeholder="Ubicación / Lugar (ej. Recámara)" autocomplete="off">
       <datalist id="inv-ubicaciones-datalist"></datalist>
       <div class="foto-preview hidden" id="inv-foto-preview">
         <img id="inv-foto-img" src="" alt="">
@@ -725,7 +727,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Treinta y uno — Inventario General ahora vive junto con Alacena y Ropa en el Inventario de Gastos (mismo lugar para verlo todo)';
+const VERSION_TXT = 'Treinta y dos — Inventario General: se arregló que el precio no se viera bien en el formulario, y se agregó el campo Tienda';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -2129,7 +2131,7 @@ function adaptarFilaGastosAInventario(g){
     ID: g.externoId, rowIndex: g.rowIndex,
     Nombre: g.concepto, Categoria: g.categoria, Caracteristicas: g.notas||'',
     Cantidad: parseInt(g.cantidad)||1, Precio: g.precioInd, PrecioMoneda: g.precioMoneda||'MXN',
-    Codigo: g.codigo, Ubicacion: g.ubicacion, FotoURL: g.fotoProducto, Papelera:false
+    Codigo: g.codigo, Ubicacion: g.ubicacion, Tienda: g.tienda||'', FotoURL: g.fotoProducto, Papelera:false
   };
 }
 async function pintarInventario(){
@@ -2156,7 +2158,7 @@ function renderInventarioList(){
     <div class="row" data-id="${i.ID}">
       ${i.FotoURL ? `<img src="${i.FotoURL}" style="width:30px;height:30px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : `<div class="ic" style="background:var(--general);">📦</div>`}
       <div class="body"><div class="main">${escapeHtml(i.Nombre)} ${i.Cantidad>1?('× '+i.Cantidad):''}</div>
-      <div class="sub">${escapeHtml(i.Categoria||'')}${i.Precio?(' · '+money(i.Precio)+(i.PrecioMoneda&&i.PrecioMoneda!=='MXN'?' '+i.PrecioMoneda:'')):''}${i.Ubicacion?(' · '+escapeHtml(i.Ubicacion)):''}${i.Codigo?(' · #'+escapeHtml(i.Codigo)):''}</div></div>
+      <div class="sub">${escapeHtml(i.Categoria||'')}${i.Precio?(' · '+money(i.Precio)+(i.PrecioMoneda&&i.PrecioMoneda!=='MXN'?' '+i.PrecioMoneda:'')):''}${i.Tienda?(' · '+escapeHtml(i.Tienda)):''}${i.Ubicacion?(' · '+escapeHtml(i.Ubicacion)):''}${i.Codigo?(' · #'+escapeHtml(i.Codigo)):''}</div></div>
       <button class="icon-btn" data-del="${i.ID}">🗑</button>
     </div>
   `).join('');
@@ -2189,6 +2191,10 @@ function pintarUbicacionesDatalist(){
   const vistas = new Set();
   state.inventario.forEach(i=>{ if(i.Ubicacion) vistas.add(i.Ubicacion); });
   dl.innerHTML = Array.from(vistas).sort().map(u=>`<option value="${escapeHtml(u)}">`).join('');
+  const dlT = document.getElementById('inv-tiendas-datalist');
+  const tiendas = new Set();
+  state.inventario.forEach(i=>{ if(i.Tienda) tiendas.add(i.Tienda); });
+  dlT.innerHTML = Array.from(tiendas).sort().map(t=>`<option value="${escapeHtml(t)}">`).join('');
 }
 
 document.getElementById('btn-inv-nuevo').addEventListener('click', ()=> abrirModalInventario(null));
@@ -2207,6 +2213,7 @@ function abrirModalInventario(idv){
   document.getElementById('inv-precio').value = item ? (item.Precio||'') : '';
   document.getElementById('inv-precio-moneda').value = item ? (item.PrecioMoneda||'MXN') : 'MXN';
   document.getElementById('inv-codigo').value = item ? (item.Codigo||'') : '';
+  document.getElementById('inv-tienda').value = item ? (item.Tienda||'') : '';
   document.getElementById('inv-ubicacion').value = item ? item.Ubicacion : '';
   const prev = document.getElementById('inv-foto-preview');
   if(item && item.FotoURL){ prev.classList.remove('hidden'); document.getElementById('inv-foto-img').src = item.FotoURL; }
@@ -2246,6 +2253,7 @@ document.getElementById('inv-guardar').addEventListener('click', async function(
       precioInd: parseFloat(document.getElementById('inv-precio').value)||'',
       precioMoneda: document.getElementById('inv-precio-moneda').value,
       codigo: document.getElementById('inv-codigo').value.trim(),
+      tienda: document.getElementById('inv-tienda').value.trim(),
       ubicacion: document.getElementById('inv-ubicacion').value.trim(),
       fotoUrl
     });
