@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v13 (fix: tab Notas abre el menú +Nuevo de Organizador) — GAS v5 -->
+<!-- App Completa — v14 (Tarea: mismos campos que Organizador; accesos +Nuevo evento/Registro de tiempo/Mi horario; horario con scroll propio y línea de ahora) — GAS v5 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -122,6 +122,10 @@ header.topbar .user-chip .av{width:26px; height:26px; border-radius:50%; backgro
 .section-title{padding:0 4px; margin:22px 0 8px;}
 .section-title:first-child{margin-top:0;}
 .grouped{background:var(--bg-elev); border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow); margin-bottom:16px;}
+#horario-list{max-height:340px; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch;}
+.now-line{position:relative; height:0;}
+.now-line .now-line-bar{position:absolute; left:0; right:0; top:0; border-top:2px solid var(--red); z-index:2;}
+.now-line .now-line-tag{position:absolute; left:10px; top:-8px; background:var(--red); color:#fff; font-size:10px; font-weight:800; padding:1px 7px; border-radius:8px; letter-spacing:.2px;}
 .row{display:flex; align-items:center; gap:12px; padding:13px 16px; border-bottom:1px solid var(--separator-op); cursor:pointer;}
 .row:last-child{border-bottom:none;}
 .row:active{background:var(--separator-op);}
@@ -292,8 +296,13 @@ body.chat-abierto .tabbar{display:none;}
 
         <div class="section-title t-caption">Tu horario de hoy</div>
         <div class="grouped" id="horario-list"></div>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" id="btn-horario-nuevo-evento">+ Nuevo evento</button>
+          <button class="btn btn-secondary btn-sm" id="btn-horario-tarea">+ Tarea</button>
+          <button class="btn btn-secondary btn-sm" id="btn-horario-registro-tiempo">⏱ Registro de tiempo y sueño</button>
+          <button class="btn btn-secondary btn-sm" id="btn-editar-rutina">✏️ Mi horario</button>
+        </div>
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
-          <button class="btn btn-text btn-sm" id="btn-editar-rutina">Editar rutina en Organizador →</button>
           <button class="btn btn-secondary btn-sm hidden" id="btn-conectar-gcal">🗓️ Conectar Google Calendar</button>
           <span class="t-foot hidden" id="gcal-conectado-txt">🗓️ Calendar conectado</span>
         </div>
@@ -532,10 +541,24 @@ body.chat-abierto .tabbar{display:none;}
     <button class="close-x" data-close-modal="modal-tarea">✕</button>
     <h2 class="t-title" id="modal-tarea-titulo">Nueva tarea</h2>
     <input type="hidden" id="tar-id">
-    <p class="t-sub" style="margin-top:6px;">Se guarda en el cuaderno "Tareas" de Organizador. La fecha límite se pone luego, allá.</p>
+    <p class="t-sub" style="margin-top:6px;">Se guarda en tu listado de Tareas de Organizador con #task en automático. Ponle fecha límite para que aparezca ese día en Calendario; si además le pones hora, aparece junto a tus eventos y hábitos, sin hora se ve aparte en "Pendientes sin hora". Agrégale etiquetas extra como #familia #trabajo para poder filtrarlas después.</p>
     <div style="margin-top:10px;">
       <input id="tar-titulo" class="field" placeholder="¿Qué hay que hacer?">
-      <textarea id="tar-notas" class="field" placeholder="Notas (opcional)"></textarea>
+      <div style="display:flex; gap:8px;">
+        <div style="flex:1;">
+          <label class="t-caption" style="display:block; margin-bottom:4px;">Fecha límite (opcional)</label>
+          <input type="date" id="tar-fecha-limite" class="field">
+        </div>
+        <div style="flex:1;">
+          <label class="t-caption" style="display:block; margin-bottom:4px;">Hora (opcional)</label>
+          <input type="time" id="tar-hora" class="field">
+        </div>
+      </div>
+      <label class="t-caption" style="display:block; margin:8px 0 4px;">Etiquetas extra (opcional)</label>
+      <input id="tar-etiquetas" class="field" placeholder="#familia #trabajo">
+      <label style="display:flex; align-items:center; gap:8px; margin-top:10px; cursor:pointer;"><input type="checkbox" id="tar-urgente"> 🔥 Urgente (se ordena arriba y avisa junto con tus hábitos)</label>
+      <label style="display:flex; align-items:center; gap:8px; margin-top:6px; cursor:pointer;"><input type="checkbox" id="tar-importante"> ⭐ Importante</label>
+      <textarea id="tar-notas" class="field" placeholder="Notas (opcional)" style="margin-top:10px;"></textarea>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="tar-cancelar">Cancelar</button>
@@ -603,7 +626,7 @@ body.chat-abierto .tabbar{display:none;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Trece — el tab Notas abre el menú +Nuevo de Organizador';
+const VERSION_TXT = 'Catorce — Tarea con fecha límite/hora/etiquetas/urgente/importante, accesos rápidos en tu horario y línea de la hora actual';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1351,7 +1374,15 @@ async function renderHorarioDesdeOrganizador(){
 
   const items = [...conHora, ...habitos].sort((a,b)=>(a.hora||'99:99').localeCompare(b.hora||'99:99'));
   if(!items.length){ cont.innerHTML = '<div class="empty-row">Sin horario, hábitos ni eventos para hoy en Organizador</div>'; return; }
-  cont.innerHTML = items.map((it,i)=>`
+
+  // Índice del último ítem cuya hora ya pasó — ahí se inserta la línea roja
+  // de "ahora" (entre esa fila y la siguiente). -1 = la hora actual es
+  // anterior a todo lo del día, la línea va arriba de todo.
+  const ahora = horaCorta(new Date().toTimeString());
+  let idxActual = -1;
+  for(let i=0;i<items.length;i++){ if(items[i].hora && items[i].hora<=ahora) idxActual = i; }
+
+  const filas = items.map((it,i)=>`
     <div class="row" data-fila="${i}">
       <button class="ic" data-toggle="${it.tipo!=='evento'?i:''}" ${it.tipo==='evento'?'disabled':''} style="background:${it.hecho?'var(--green)':'var(--accent)'}; border:none; font-weight:800; font-size:12px; letter-spacing:.2px; ${it.tipo!=='evento'?'cursor:pointer;':''}">${it.hora||'🎯'}</button>
       <div class="body">
@@ -1361,31 +1392,29 @@ async function renderHorarioDesdeOrganizador(){
         ${(it.notas&&it.notas.length)?`<div class="sub">📝 ${it.notas.map(n=>escapeHtml(n.Titulo||'(nota)')).join(' · ')}</div>`:''}
       </div>
     </div>
-  `).join('');
-  // Se desplaza a la hora actual solo la primera vez que carga el Home —
-  // así se ve de entrada "dónde vas" sin tener que buscarlo, pero no salta
-  // la pantalla sola cada vez que se marca algo como cumplido (eso también
-  // vuelve a llamar a esta función). Todo en try/catch propio: un fallo
-  // aquí (dato inesperado, etc.) nunca debe tumbar el resto del render.
+  `);
+  const lineaAhora = `<div class="now-line" id="hora-actual"><div class="now-line-bar"></div><div class="now-line-tag">${ahora}</div></div>`;
+  filas.splice(idxActual+1, 0, lineaAhora);
+  cont.innerHTML = filas.join('');
+
+  // Se desplaza a la línea de "ahora" solo la primera vez que carga el
+  // Home — así se ve de entrada "dónde vas" sin tener que buscarlo, pero
+  // no salta la pantalla sola cada vez que se marca algo como cumplido
+  // (eso también vuelve a llamar a esta función). El scroll queda
+  // contenido dentro de #horario-list (tiene su propio overflow-y:auto en
+  // el CSS), no mueve el resto de la página — scrollIntoView usa el
+  // contenedor con scroll más cercano automáticamente. Todo en try/catch
+  // propio: un fallo aquí (dato inesperado, etc.) nunca debe tumbar el
+  // resto del render.
   try{
     if(!window.__acHorarioYaCentrado){
       window.__acHorarioYaCentrado = true;
-      const ahora = horaCorta(new Date().toTimeString());
-      let idxActual = -1;
-      for(let i=0;i<items.length;i++){ if(items[i].hora && items[i].hora<=ahora) idxActual = i; }
-      if(idxActual>=0){
-        const idHora = 'hora-actual-'+idxActual;
-        const fila = cont.querySelector('[data-fila="'+idxActual+'"]');
-        if(fila){
-          fila.id = idHora;
-          [200, 500, 900, 1500, 2500].forEach(function(ms){
-            setTimeout(function(){
-              const el = document.getElementById(idHora);
-              if(el) el.scrollIntoView({ block:'center', behavior:'auto' });
-            }, ms);
-          });
-        }
-      }
+      [200, 500, 900, 1500, 2500].forEach(function(ms){
+        setTimeout(function(){
+          const el = document.getElementById('hora-actual');
+          if(el) el.scrollIntoView({ block:'center', behavior:'auto' });
+        }, ms);
+      });
     }
   } catch(e){}
 
@@ -1408,7 +1437,10 @@ async function toggleHorarioHabito(it){
   } catch(e){ toast('Error: '+e.message); }
 }
 function habitoLigadoAHorario(habitoId, horario){ return (horario||[]).some(h=>h.HabitoID===habitoId); }
-document.getElementById('btn-editar-rutina').addEventListener('click', ()=> irApp('notas'));
+document.getElementById('btn-editar-rutina').addEventListener('click', ()=> irApp('notas', '#mi-horario'));
+document.getElementById('btn-horario-nuevo-evento').addEventListener('click', ()=> irApp('notas', '#nuevo-evento'));
+document.getElementById('btn-horario-tarea').addEventListener('click', ()=> abrirModalTarea(null));
+document.getElementById('btn-horario-registro-tiempo').addEventListener('click', ()=> irApp('notas', '#registro-tiempo'));
 
 /* ---- Tareas (notas de Organizador en el cuaderno "Tareas") ---- */
 function renderTareasDesdeOrganizador(){
@@ -1439,6 +1471,11 @@ function abrirModalTarea(){
   document.getElementById('modal-tarea-titulo').textContent = 'Nueva tarea (en Organizador)';
   document.getElementById('tar-id').value = '';
   document.getElementById('tar-titulo').value = '';
+  document.getElementById('tar-fecha-limite').value = '';
+  document.getElementById('tar-hora').value = '';
+  document.getElementById('tar-etiquetas').value = '';
+  document.getElementById('tar-urgente').checked = false;
+  document.getElementById('tar-importante').checked = false;
   document.getElementById('tar-notas').value = '';
   openModal('modal-tarea');
 }
@@ -1450,14 +1487,28 @@ document.getElementById('tar-guardar').addEventListener('click', async function(
   const btn = this;
   setBtnState(btn, 'saving', {saving:'Guardando…'});
   try{
-    // Nota: se crea en el cuaderno "Tareas" de Organizador, sin fecha límite
-    // todavía (esa vive en un formato especial dentro del contenido de la
-    // nota — se define en Organizador para no arriesgar guardarla mal desde
-    // aquí). El campo de fecha de este formulario queda para una fase futura.
+    // Mismas variables/lógica que el modal "⚑ Tareas" de Organizador
+    // (openQuickTaskModal/saveQuickTask): #task siempre, más #urgente/
+    // #importante/etiquetas extra en Tags, y la fecha límite como campo
+    // #fecha_limite al final del Contenido (mismo mecanismo que usa
+    // Organizador para leerla con getNoteFields — funciona porque esta
+    // nota siempre nace "simple", nunca con formato Cornell).
+    const fecha = document.getElementById('tar-fecha-limite').value;
+    const hora = document.getElementById('tar-hora').value;
+    const extraTags = document.getElementById('tar-etiquetas').value.trim().split(/\s+/).map(t=>t.replace(/^#/,'').trim()).filter(Boolean);
+    const allTags = ['task'].concat(extraTags.filter(t=>t && t!=='task'));
+    if(document.getElementById('tar-urgente').checked && !allTags.includes('urgente')) allTags.push('urgente');
+    if(document.getElementById('tar-importante').checked && !allTags.includes('importante')) allTags.push('importante');
+    const notasTexto = document.getElementById('tar-notas').value.trim();
+    let contenido = '<p>'+escapeHtml(titulo)+'</p>' + (notasTexto ? '<p>'+escapeHtml(notasTexto)+'</p>' : '');
+    if(fecha){
+      const dueIso = new Date(fecha+'T'+(hora||'00:00')+':00').toISOString();
+      contenido += '<p class="task-due-field">#fecha_limite</p><p class="task-due-field">'+escapeHtml(dueIso)+'</p>';
+    }
     await callOrganizador('saveRow', { table:'NOTAS', row:{
-      ID: uid(), Fecha: new Date().toISOString(), Titulo: titulo,
-      Contenido: escapeHtml(document.getElementById('tar-notas').value.trim()),
-      Tags: '#task', Notebook: 'Tareas', Pinned: false, Papelera: false
+      ID: uid(), Fecha: new Date().toISOString(), FechaEdicion: new Date().toISOString(), Titulo: titulo,
+      Contenido: contenido,
+      Tags: allTags.map(t=>'#'+t).join(' '), Notebook: 'Tareas', Cornell:'', CornellCue:'', Color:'', Pinned: false, Orden: 0, Archivo:'', Papelera: false
     }});
     toast('Guardado en Organizador');
     closeModal('modal-tarea');
