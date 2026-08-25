@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v15 (IA: historial real de conversación + módulo "evento" que crea la cita en Google Calendar de verdad) — GAS v6 -->
+<!-- App Completa — v16 (chat IA como ventanita flotante: se arrastra, minimiza y maximiza) — GAS v6 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -239,14 +239,34 @@ textarea.field{resize:vertical; min-height:70px;}
 .sugerencia-card{background:var(--bg-elev); box-shadow:var(--shadow); border-radius:var(--radius-md); padding:12px; margin-top:8px; max-width:84%;}
 .sugerencia-card.hecha{opacity:.55;}
 .sugerencia-card .campo{font-size:13px; color:var(--text-soft); margin:2px 0;}
-#ia-compose-bar{
-  position:fixed; left:0; right:0; bottom:0; z-index:25; background:var(--bg-elev);
-  border-top:1px solid var(--separator-op); padding:8px 12px calc(8px + var(--safe-b));
-}
+#ia-compose-bar{border-top:1px solid var(--separator-op); padding:8px 12px; flex-shrink:0;}
 #ia-foto-preview{padding:6px 0;}
 #ia-foto-preview img{height:64px; border-radius:8px;}
-@media (min-width:900px){ #ia-compose-bar{left:260px;} }
-body.chat-abierto .tabbar{display:none;}
+
+/* ---------- Ventanita flotante de la IA (arrastrable, minimizar/maximizar) ---------- */
+#ia-fab{
+  position:fixed; right:20px; bottom:calc(20px + var(--safe-b)); z-index:290;
+  width:56px; height:56px; border-radius:50%; border:none; cursor:pointer;
+  background:var(--accent); color:#fff; font-size:24px; box-shadow:var(--shadow);
+  display:flex; align-items:center; justify-content:center;
+}
+#ia-fab.hidden{display:none;}
+@media (max-width:899px){ #ia-fab{bottom:calc(78px + var(--safe-b));} }
+
+#ia-widget{
+  display:none; position:fixed; z-index:300; flex-direction:column;
+  width:340px; height:480px; max-width:calc(100vw - 20px); max-height:calc(100vh - 20px);
+  background:var(--bg-elev); border-radius:var(--radius-lg); box-shadow:0 10px 40px rgba(0,0,0,.3);
+  overflow:hidden;
+}
+#ia-widget.on{display:flex;}
+#ia-widget.maximizado{left:10px!important; top:10px!important; right:10px; bottom:10px; width:auto!important; height:auto!important;}
+#ia-widget-header{
+  display:flex; align-items:center; gap:8px; padding:10px 6px 10px 14px;
+  background:var(--accent-soft); cursor:move; flex-shrink:0; user-select:none;
+}
+#ia-widget-header .icon-btn{width:30px; height:30px;}
+#ia-widget-body{flex:1; overflow-y:auto; padding:14px;}
 
 /* ---------- Escanear código de barras / recortar foto ---------- */
 .scan-overlay, .crop-overlay{position:fixed; inset:0; z-index:700; background:rgba(0,0,0,.75); display:none; align-items:center; justify-content:center; padding:16px;}
@@ -343,22 +363,6 @@ body.chat-abierto .tabbar{display:none;}
         <div class="grouped" id="lugares-list"></div>
       </section>
 
-      <!-- ---------- IA ---------- -->
-      <section class="view" id="view-ia">
-        <div id="ia-lista-chats">
-          <div class="section-title t-caption">Chats con la IA</div>
-          <button class="btn btn-primary" id="btn-ia-nuevo-chat" style="margin-bottom:14px;">+ Nuevo chat</button>
-          <div class="grouped" id="ia-chats-list"></div>
-        </div>
-        <div id="ia-chat-detalle" class="hidden">
-          <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
-            <button class="icon-btn" id="btn-ia-volver">←</button>
-            <span class="t-headline" id="ia-chat-titulo" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Chat nuevo</span>
-          </div>
-          <div id="ia-mensajes" style="display:flex; flex-direction:column; gap:10px; padding-bottom:110px;"></div>
-        </div>
-      </section>
-
       <!-- ---------- CONFIGURACIÓN ---------- -->
       <section class="view" id="view-config">
         <div class="section-title t-caption">Versión</div>
@@ -423,13 +427,35 @@ body.chat-abierto .tabbar{display:none;}
     <!-- ---------- TAB BAR (móvil) ---------- -->
     <nav class="tabbar" id="tabbar"></nav>
 
-    <!-- ---------- Barra de composición del chat IA ---------- -->
-    <div id="ia-compose-bar" class="hidden">
-      <div id="ia-foto-preview" class="hidden"></div>
-      <div style="display:flex; gap:8px; align-items:flex-end;">
-        <button class="icon-btn" id="btn-ia-foto" style="width:40px; height:40px; flex-shrink:0;">📷</button>
-        <textarea id="ia-input" class="field" style="margin:0; flex:1; max-height:100px; resize:none;" placeholder="Escribe o manda una foto…" rows="1"></textarea>
-        <button class="btn btn-primary btn-sm" id="btn-ia-enviar" style="width:44px; flex-shrink:0;">➤</button>
+    <!-- ---------- Ventanita flotante de la IA (se puede arrastrar, minimizar y maximizar) ---------- -->
+    <button id="ia-fab" title="Chat con la IA">💬</button>
+    <div id="ia-widget">
+      <div id="ia-widget-header">
+        <span class="ic" style="background:var(--general); width:26px; height:26px; font-size:13px; flex-shrink:0;">💬</span>
+        <span class="t-headline" id="ia-widget-titulo" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Chats con la IA</span>
+        <button class="icon-btn" id="btn-ia-maximizar" title="Maximizar">⤢</button>
+        <button class="icon-btn" id="btn-ia-minimizar" title="Minimizar">—</button>
+      </div>
+      <div id="ia-widget-body">
+        <div id="ia-lista-chats">
+          <button class="btn btn-primary" id="btn-ia-nuevo-chat" style="margin-bottom:14px;">+ Nuevo chat</button>
+          <div class="grouped" id="ia-chats-list"></div>
+        </div>
+        <div id="ia-chat-detalle" class="hidden">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+            <button class="icon-btn" id="btn-ia-volver">←</button>
+            <span class="t-headline" id="ia-chat-titulo" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Chat nuevo</span>
+          </div>
+          <div id="ia-mensajes" style="display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
+      </div>
+      <div id="ia-compose-bar" class="hidden">
+        <div id="ia-foto-preview" class="hidden"></div>
+        <div style="display:flex; gap:8px; align-items:flex-end;">
+          <button class="icon-btn" id="btn-ia-foto" style="width:40px; height:40px; flex-shrink:0;">📷</button>
+          <textarea id="ia-input" class="field" style="margin:0; flex:1; max-height:100px; resize:none;" placeholder="Escribe o manda una foto…" rows="1"></textarea>
+          <button class="btn btn-primary btn-sm" id="btn-ia-enviar" style="width:44px; flex-shrink:0;">➤</button>
+        </div>
       </div>
     </div>
     <input type="file" id="ia-file-input" accept="image/*" class="hidden">
@@ -626,7 +652,7 @@ body.chat-abierto .tabbar{display:none;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Quince — la IA ahora sí recuerda la conversación y puede crear eventos reales en Google Calendar';
+const VERSION_TXT = 'Dieciséis — el chat de la IA ahora es una ventanita flotante que se arrastra, minimiza y maximiza';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -641,7 +667,8 @@ const APP_LINKS = {
 const LS = {
   usuarios:'ac_usuarios', activo:'ac_usuario_activo', conexiones:'ac_conexiones',
   gasUrlPropia:'ac_gas_url', mejorasCache:'ac_mejoras_cache', inventarioCache:'ac_inventario_cache',
-  gastosSesion:'ac_gastos_sesion', gastosPass:'ac_gastos_pass', organizadorSheetId:'ac_organizador_sheet_id'
+  gastosSesion:'ac_gastos_sesion', gastosPass:'ac_gastos_pass', organizadorSheetId:'ac_organizador_sheet_id',
+  iaWidget:'ac_ia_widget_pos'
 };
 
 let state = {
@@ -749,6 +776,8 @@ function pushHistory(tag){ history.pushState({ acTag:tag }, ''); }
 window.addEventListener('popstate', (e)=>{
   const modalAbierto = document.querySelector('.modal-overlay.on');
   if(modalAbierto){ closeModal(modalAbierto.id); return; }
+  const widgetIA = document.getElementById('ia-widget');
+  if(widgetIA && widgetIA.classList.contains('on')){ minimizarWidgetIA(); return; }
   if(state.vista !== 'hoy'){ irAVista('hoy'); }
 });
 
@@ -828,6 +857,7 @@ function mostrarApp(){
   construirNav();
   cargarConexiones();
   irAVista('hoy');
+  initWidgetIA();
 }
 
 /* ---- Modal: cambiar / agregar / editar usuarios ---- */
@@ -946,7 +976,7 @@ const NAV_ITEMS = [
   { id:'app:comidas', icon:'🍽️', label:'Comidas', tab:false, externo:true },
   { id:'app:ropa', icon:'👕', label:'Closet', tab:false, externo:true },
   { id:'app:acuerdos', icon:'🤝', label:'Acuerdos', tab:false, externo:true },
-  { id:'ia', icon:'💬', label:'IA', tab:false },
+  { id:'ia', icon:'💬', label:'IA', tab:false, widget:true },
   { id:'config', icon:'⚙️', label:'Config', tab:false },
 ];
 // En móvil el tab bar solo tiene 5 huecos: Hoy, Notas, Mapa, Inventario, Más.
@@ -966,7 +996,7 @@ function construirNav(){
     const btn = document.createElement('button');
     btn.className = 'nav-item'; btn.dataset.navId = it.id;
     btn.innerHTML = `<span class="ic">${it.icon}</span><span>${it.label}</span>`;
-    btn.addEventListener('click', ()=> it.externo ? irApp(it.id.split(':')[1], it.hash) : irAVista(it.id));
+    btn.addEventListener('click', ()=> it.widget ? abrirWidgetIA() : it.externo ? irApp(it.id.split(':')[1], it.hash) : irAVista(it.id));
     sb.appendChild(btn);
     if(it.id==='inventario'){ const sep=document.createElement('div'); sep.className='nav-sep'; sb.appendChild(sep); }
   });
@@ -979,7 +1009,7 @@ function construirNav(){
     const btn = document.createElement('button');
     btn.className = 'tab-item'; btn.dataset.navId = it.id;
     btn.innerHTML = `<span class="ic">${it.icon}</span><span>${it.label}</span>`;
-    btn.addEventListener('click', ()=> it.externo ? irApp(it.id.split(':')[1], it.hash) : irAVista(it.id==='mas'?'mas':it.id));
+    btn.addEventListener('click', ()=> it.widget ? abrirWidgetIA() : it.externo ? irApp(it.id.split(':')[1], it.hash) : irAVista(it.id==='mas'?'mas':it.id));
     tb.appendChild(btn);
   });
 
@@ -996,7 +1026,7 @@ function construirNav(){
   masList.querySelectorAll('[data-nav]').forEach(r=>{
     r.addEventListener('click', ()=>{
       const it = NAV_ITEMS.find(n=>n.id===r.dataset.nav);
-      it.externo ? irApp(it.id.split(':')[1], it.hash) : irAVista(it.id);
+      it.widget ? abrirWidgetIA() : it.externo ? irApp(it.id.split(':')[1], it.hash) : irAVista(it.id);
     });
   });
 }
@@ -1004,20 +1034,18 @@ function construirNav(){
 function irAVista(id){
   state.vista = id;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
-  const map = { hoy:'view-hoy', mas:'view-mas', inventario:'view-inventario', mapa:'view-mapa', ia:'view-ia', config:'view-config' };
+  const map = { hoy:'view-hoy', mas:'view-mas', inventario:'view-inventario', mapa:'view-mapa', config:'view-config' };
   const target = document.getElementById(map[id] || 'view-hoy');
   target.classList.add('on');
   document.querySelectorAll('.nav-item, .tab-item').forEach(b=>{
     b.classList.toggle('active', b.dataset.navId === id || (id==='mas' && b.dataset.navId==='mas'));
   });
-  const titulos = { hoy:'Hoy', mas:'Más', inventario:'Inventario general', mapa:'Mapa', ia:'IA', config:'Configuración' };
+  const titulos = { hoy:'Hoy', mas:'Más', inventario:'Inventario general', mapa:'Mapa', config:'Configuración' };
   document.getElementById('topbar-title').textContent = titulos[id] || 'Hoy';
   document.getElementById('views').scrollTop = 0;
-  if(id!=='ia'){ cerrarChatIA(); }
   if(id==='config'){ pintarConfigTodo(); }
   if(id==='inventario'){ pintarInventario(); }
   if(id==='mapa'){ pintarMapa(); }
-  if(id==='ia'){ pintarIAListaChats(); }
 }
 
 /* ============================================================
@@ -1044,7 +1072,7 @@ function pintarQuickActions(){
     const a = QUICK_ACTIONS.find(x=>x.id===b.dataset.app);
     if(a.tipo==='app') irApp(a.id, a.hash);
     else if(a.tipo==='tarea') abrirModalTarea(null);
-    else if(a.tipo==='ia'){ irAVista('ia'); nuevoChatIA(); }
+    else if(a.tipo==='ia'){ abrirWidgetIA(); nuevoChatIA(); }
   }));
 
   const nav = document.getElementById('home-apps-nav');
@@ -1907,7 +1935,7 @@ async function pintarIAListaChats(){
   document.getElementById('ia-lista-chats').classList.remove('hidden');
   document.getElementById('ia-chat-detalle').classList.add('hidden');
   document.getElementById('ia-compose-bar').classList.add('hidden');
-  document.body.classList.remove('chat-abierto');
+  document.getElementById('ia-widget-titulo').textContent = 'Chats con la IA';
   const cont = document.getElementById('ia-chats-list');
   if(!state.gasUrlPropia){ cont.innerHTML = '<div class="empty-row">Configura tu Web App propia en Configuración → Conexiones</div>'; return; }
   cont.innerHTML = '<div class="empty-row">Cargando…</div>';
@@ -1956,8 +1984,8 @@ function abrirChatUI(){
   document.getElementById('ia-lista-chats').classList.add('hidden');
   document.getElementById('ia-chat-detalle').classList.remove('hidden');
   document.getElementById('ia-compose-bar').classList.remove('hidden');
-  document.body.classList.add('chat-abierto');
   document.getElementById('ia-chat-titulo').textContent = state.chatActivo.Titulo;
+  document.getElementById('ia-widget-titulo').textContent = state.chatActivo.Titulo;
   pushHistory('chat-ia');
   renderMensajesIA();
 }
@@ -1967,9 +1995,78 @@ function cerrarChatIA(){
   document.getElementById('ia-lista-chats').classList.remove('hidden');
   document.getElementById('ia-chat-detalle').classList.add('hidden');
   document.getElementById('ia-compose-bar').classList.add('hidden');
-  document.body.classList.remove('chat-abierto');
 }
 document.getElementById('btn-ia-volver').addEventListener('click', ()=>{ cerrarChatIA(); pintarIAListaChats(); });
+
+/* ---- Ventanita flotante: se puede arrastrar por el header, minimizar
+   (vuelve al botón 💬 sin perder el chat abierto) y maximizar (llena casi
+   toda la pantalla). Minimizar NUNCA borra state.chatActivo — a diferencia
+   de antes (era una vista más, cambiar de tab cerraba el chat), ahora al
+   reabrir sigues exactamente donde ibas. La posición/tamaño se guardan en
+   localStorage para que la próxima vez aparezca donde la dejaste. ---- */
+function posicionInicialWidgetIA(){
+  const w = 340, h = 480, margenDer = 20, margenAbajo = window.innerWidth<900 ? 90 : 90;
+  return { left: Math.max(10, window.innerWidth - w - margenDer), top: Math.max(10, window.innerHeight - h - margenAbajo) };
+}
+function guardarEstadoWidgetIA(){
+  const w = document.getElementById('ia-widget');
+  try{
+    localStorage.setItem(LS.iaWidget, JSON.stringify({
+      left: parseInt(w.style.left)||0, top: parseInt(w.style.top)||0,
+      maximizado: w.classList.contains('maximizado')
+    }));
+  } catch(e){}
+}
+function initWidgetIA(){
+  const widget = document.getElementById('ia-widget');
+  const header = document.getElementById('ia-widget-header');
+  let guardado = null;
+  try{ guardado = JSON.parse(localStorage.getItem(LS.iaWidget)); } catch(e){}
+  const pos = (guardado && typeof guardado.left==='number') ? guardado : posicionInicialWidgetIA();
+  widget.style.left = pos.left+'px'; widget.style.top = pos.top+'px';
+  if(guardado && guardado.maximizado) widget.classList.add('maximizado');
+
+  let arrastrando = false, offX = 0, offY = 0;
+  header.addEventListener('pointerdown', (e)=>{
+    if(e.target.closest('button')) return;
+    if(widget.classList.contains('maximizado')) return;
+    arrastrando = true;
+    const r = widget.getBoundingClientRect();
+    offX = e.clientX - r.left; offY = e.clientY - r.top;
+    try{ header.setPointerCapture(e.pointerId); } catch(err){}
+  });
+  header.addEventListener('pointermove', (e)=>{
+    if(!arrastrando) return;
+    const r = widget.getBoundingClientRect();
+    const left = Math.max(4, Math.min(window.innerWidth - r.width - 4, e.clientX - offX));
+    const top = Math.max(4, Math.min(window.innerHeight - r.height - 4, e.clientY - offY));
+    widget.style.left = left+'px'; widget.style.top = top+'px';
+  });
+  ['pointerup','pointercancel'].forEach(ev=> header.addEventListener(ev, ()=>{
+    if(!arrastrando) return;
+    arrastrando = false;
+    guardarEstadoWidgetIA();
+  }));
+
+  document.getElementById('ia-fab').addEventListener('click', ()=> abrirWidgetIA());
+  document.getElementById('btn-ia-minimizar').addEventListener('click', ()=> minimizarWidgetIA());
+  document.getElementById('btn-ia-maximizar').addEventListener('click', ()=> toggleMaximizarWidgetIA());
+}
+function abrirWidgetIA(){
+  const widget = document.getElementById('ia-widget');
+  widget.classList.add('on');
+  document.getElementById('ia-fab').classList.add('hidden');
+  pushHistory('chat-ia-widget');
+  if(!state.chatActivo) pintarIAListaChats();
+}
+function minimizarWidgetIA(){
+  document.getElementById('ia-widget').classList.remove('on');
+  document.getElementById('ia-fab').classList.remove('hidden');
+}
+function toggleMaximizarWidgetIA(){
+  document.getElementById('ia-widget').classList.toggle('maximizado');
+  guardarEstadoWidgetIA();
+}
 
 const SUGERENCIA_LABELS = {
   evento:'Evento (Calendar)', nota:'Nota', acuerdo:'Acuerdo', lista_compras:'Lista de compras',
@@ -2014,9 +2111,8 @@ function renderMensajesIA(){
     const [mi,si] = b.dataset.confirmar.split(':').map(Number);
     confirmarSugerenciaIA(mi, si);
   }));
-  cont.scrollTop = cont.scrollHeight;
-  window.scrollTo(0,0);
-  document.getElementById('views').scrollTop = document.getElementById('views').scrollHeight;
+  const cuerpo = document.getElementById('ia-widget-body');
+  cuerpo.scrollTop = cuerpo.scrollHeight;
 }
 function toggleDestacadoIA(idx){
   state.chatActivo.mensajes[idx].destacado = !state.chatActivo.mensajes[idx].destacado;
