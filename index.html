@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v23 (Calendario Día/Semana/Mes construido de verdad dentro de la app, con datos reales) — GAS v7 -->
+<!-- App Completa — v24 (fix: el check del Calendario ahora sí refresca datos antes de repintar) — GAS v7 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -701,7 +701,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Veintitrés — Calendario (Día/Semana/Mes) ya existe de verdad dentro de la app, con tu horario y registro de tiempo real alineados por hora';
+const VERSION_TXT = 'Veinticuatro — arreglado: el check dentro de Calendario ya marca de verdad (antes se quedaba en creado sin nunca verse marcado)';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1718,13 +1718,24 @@ async function pintarCalendarioDia(){
     ${sinHoraHtml}
   `;
 
+  // OJO: el callback tiene que ser pintarCalendario() (que vuelve a pedir
+  // getAll y refresca state.organizadorData) y NUNCA pintarCalendarioDia()
+  // solo — ese repinta con los mismos datos en caché de ANTES del toggle,
+  // así que el check nunca se veía marcado (bug real encontrado probando:
+  // cada clic creaba un HORARIO_LOG nuevo en vez de alternar crear/borrar,
+  // porque siempre volvía a ver "hecho:false" con datos viejos).
+  // pintarCalendario() reemplaza cont.innerHTML mientras recarga — guarda
+  // y repone el scroll de #views (el que de verdad se mueve, cal-content
+  // no tiene su propio overflow) para no perder el lugar en una columna
+  // tan alta.
+  const alTogglear = async ()=>{ const v = document.getElementById('views'); const y = v.scrollTop; await pintarCalendario(); v.scrollTop = y; };
   cont.querySelectorAll('[data-cal-check]').forEach(b=> b.addEventListener('click', (e)=>{
     e.stopPropagation();
-    toggleHorarioHabito(itemsConHora[parseInt(b.dataset.calCheck)], pintarCalendarioDia);
+    toggleHorarioHabito(itemsConHora[parseInt(b.dataset.calCheck)], alTogglear);
   }));
   cont.querySelectorAll('[data-cal-check-sh]').forEach(b=> b.addEventListener('click', (e)=>{
     e.stopPropagation();
-    toggleHorarioHabito(itemsSinHora[parseInt(b.dataset.calCheckSh)], pintarCalendarioDia);
+    toggleHorarioHabito(itemsSinHora[parseInt(b.dataset.calCheckSh)], alTogglear);
   }));
 
   if(esHoy && !window.__acCalendarioYaCentrado){
