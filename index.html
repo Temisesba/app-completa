@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v21 (Tu horario de hoy: TODO se puede marcar como hecho, incluidos los eventos de Google Calendar) — GAS v7 -->
+<!-- App Completa — v22 (Tu horario de hoy: el check queda aparte a la derecha, la hora ya no es el botón) — GAS v7 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -134,6 +134,12 @@ header.topbar .user-chip .av{width:26px; height:26px; border-radius:50%; backgro
 .row .body .main{font-size:16px; font-weight:500;}
 .row .body .sub{font-size:13px; color:var(--text-soft); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .row .chev{color:var(--text-faint); font-size:14px;}
+.check-toggle{
+  width:26px; height:26px; border-radius:50%; border:2px solid var(--separator); background:transparent;
+  flex-shrink:0; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  color:#fff; font-size:14px; font-weight:800; padding:0;
+}
+.check-toggle.on{background:var(--green); border-color:var(--green);}
 .row.disabled{cursor:default;}
 .empty-row{padding:22px 16px; text-align:center; color:var(--text-faint); font-size:14px;}
 
@@ -653,7 +659,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Veintiuno — en Tu horario de hoy ya puedes marcar como hecho absolutamente todo, incluidos tus eventos de Google Calendar';
+const VERSION_TXT = 'Veintidós — el check de Tu horario de hoy ahora es su propio círculo aparte a la derecha, ya no la hora';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1430,15 +1436,20 @@ async function renderHorarioDesdeOrganizador(){
   let idxActual = -1;
   for(let i=0;i<items.length;i++){ if(items[i].hora && items[i].hora<=ahora) idxActual = i; }
 
+  // La hora ya no ES el botón de "hecho" — pedido explícito: el check va
+  // aparte, a un ladito (no metido entre las horas). El badge de la hora
+  // ahora es solo informativo (siempre --accent); el círculo de la derecha
+  // es el único que togglea.
   const filas = items.map((it,i)=>`
     <div class="row" data-fila="${i}">
-      <button class="ic" data-toggle="${i}" style="background:${it.hecho?'var(--green)':'var(--accent)'}; border:none; font-weight:800; font-size:12px; letter-spacing:.2px; cursor:pointer;">${it.hora||'🎯'}</button>
+      <div class="ic" style="background:var(--accent); font-weight:800; font-size:12px; letter-spacing:.2px;">${it.hora||'🎯'}</div>
       <div class="body">
         <div class="main" style="${it.hecho?'text-decoration:line-through;opacity:.6;':''}">${escapeHtml(it.actividad||'')}</div>
         ${it.obs?`<div class="sub">${escapeHtml(it.obs)}</div>`:''}
         ${it.horaReal?`<div class="sub" style="color:var(--green);">✓ Real: ${it.horaReal}</div>`:''}
         ${(it.notas&&it.notas.length)?`<div class="sub">📝 ${it.notas.map(n=>escapeHtml(n.Titulo||'(nota)')).join(' · ')}</div>`:''}
       </div>
+      <button class="check-toggle ${it.hecho?'on':''}" data-toggle="${i}">${it.hecho?'✓':''}</button>
     </div>
   `);
   const lineaAhora = `<div class="now-line" id="hora-actual"><div class="now-line-bar"></div><div class="now-line-tag">${ahora}</div></div>`;
