@@ -2,7 +2,7 @@
 // conexión. Mismo patrón que las demás apps (ej. Acuerdos/sw.js):
 // cache:'no-store' en el documento principal para que la app instalada
 // nunca se quede viendo una copia vieja.
-const CACHE_NAME = 'app-completa-shell-v16';
+const CACHE_NAME = 'app-completa-shell-v17';
 const SHELL_FILE = 'index.html';
 
 self.addEventListener('install', () => { self.skipWaiting(); });
