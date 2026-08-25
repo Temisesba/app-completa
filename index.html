@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v20 (IA usa tu zona horaria real para eventos; nuevo acceso a Calendario Día/Semana/Mes de Organizador) — GAS v7 -->
+<!-- App Completa — v21 (Tu horario de hoy: TODO se puede marcar como hecho, incluidos los eventos de Google Calendar) — GAS v7 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -653,7 +653,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Veinte — la IA usa tu zona horaria real al crear eventos, y ya puedes abrir el Calendario (Día/Semana/Mes) de Organizador desde Más';
+const VERSION_TXT = 'Veintiuno — en Tu horario de hoy ya puedes marcar como hecho absolutamente todo, incluidos tus eventos de Google Calendar';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1364,6 +1364,7 @@ async function fetchEventosGoogleHoy(){
   if(!res.ok) return [];
   const data = await res.json();
   return (data.items||[]).map(ev=>({
+    id: ev.id,
     hora: ev.start && ev.start.dateTime ? horaCorta(new Date(ev.start.dateTime).toTimeString()) : '',
     actividad: '📅 '+(ev.summary||'(sin título)'),
     obs: ev.location||''
@@ -1396,7 +1397,15 @@ async function renderHorarioDesdeOrganizador(){
   let eventos = [];
   try{ eventos = await fetchEventosGoogleHoy(); } catch(e){ /* sin Calendar conectado, se omite */ }
   pintarEstadoGoogleCalendar();
-  eventos = eventos.map(e=>Object.assign({ tipo:'evento' }, e));
+  // Los eventos de Google también se pueden marcar como hechos — pedido
+  // explícito para poder ir comparando lo planeado con lo que de verdad se
+  // hizo, igual que ya se podía con horario/hábitos. Reusa HORARIO_LOG tal
+  // cual (mismo mecanismo, sin tabla nueva): el ID del evento de Google
+  // funciona igual de bien como HorarioID que el ID de una fila de HORARIO.
+  eventos = eventos.map(e=>{
+    const real = horaRealDe(d.horario_log, 'HorarioID', e.id);
+    return Object.assign({ tipo:'evento', hecho:!!real.logId, horaReal:real.horaReal, logId:real.logId }, e);
+  });
 
   // Notas tomadas dentro de cada franja (de su hora a la hora de la
   // siguiente franja/evento) — para ver qué se anotó mientras pasaba eso,
@@ -1423,7 +1432,7 @@ async function renderHorarioDesdeOrganizador(){
 
   const filas = items.map((it,i)=>`
     <div class="row" data-fila="${i}">
-      <button class="ic" data-toggle="${it.tipo!=='evento'?i:''}" ${it.tipo==='evento'?'disabled':''} style="background:${it.hecho?'var(--green)':'var(--accent)'}; border:none; font-weight:800; font-size:12px; letter-spacing:.2px; ${it.tipo!=='evento'?'cursor:pointer;':''}">${it.hora||'🎯'}</button>
+      <button class="ic" data-toggle="${i}" style="background:${it.hecho?'var(--green)':'var(--accent)'}; border:none; font-weight:800; font-size:12px; letter-spacing:.2px; cursor:pointer;">${it.hora||'🎯'}</button>
       <div class="body">
         <div class="main" style="${it.hecho?'text-decoration:line-through;opacity:.6;':''}">${escapeHtml(it.actividad||'')}</div>
         ${it.obs?`<div class="sub">${escapeHtml(it.obs)}</div>`:''}
@@ -1462,8 +1471,8 @@ async function renderHorarioDesdeOrganizador(){
   } catch(e){}
 }
 async function toggleHorarioHabito(it){
-  const tabla = it.tipo==='horario' ? 'HORARIO_LOG' : 'HABITO_LOG';
-  const campoId = it.tipo==='horario' ? 'HorarioID' : 'HabitoID';
+  const tabla = it.tipo==='habito' ? 'HABITO_LOG' : 'HORARIO_LOG';
+  const campoId = it.tipo==='habito' ? 'HabitoID' : 'HorarioID';
   try{
     if(it.hecho && it.logId){
       await callOrganizador('deleteRow', { table:tabla, id:it.logId });
