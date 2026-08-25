@@ -223,6 +223,7 @@ header.topbar .user-chip .av{width:26px; height:26px; border-radius:50%; backgro
   justify-content:center; opacity:0; pointer-events:none; transition:opacity .18s ease;
 }
 .modal-overlay.on{opacity:1; pointer-events:auto;}
+#modal-confirm{z-index:401;} /* siempre encima de cualquier otro modal ya abierto (ej. borrar desde dentro de un modal de edición) */
 @media (min-width:640px){ .modal-overlay{align-items:center;} }
 .modal{
   background:var(--bg-elev); width:100%; max-width:440px; border-radius:20px 20px 0 0; padding:22px 20px calc(20px + var(--safe-b));
