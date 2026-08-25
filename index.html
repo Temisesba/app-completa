@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v30 (mantener presionada una franja de "Tu horario de hoy"/Calendario Día más de 1.2s la abre para editar u eliminar) — GAS v7 -->
+<!-- App Completa — v31 (Inventario General ahora vive en Gastos: Alacena+Ropa+General en un solo lugar) — GAS v7 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -560,7 +560,8 @@ textarea.field{resize:vertical; min-height:70px;}
       <textarea id="inv-caracteristicas" class="field" placeholder="Características (color, marca, estado, dónde está...)"></textarea>
       <div style="display:flex; gap:10px;">
         <input id="inv-cantidad" class="field" type="number" min="1" placeholder="Cantidad" value="1">
-        <input id="inv-precio" class="field" type="number" min="0" step="0.01" placeholder="Precio ($)">
+        <input id="inv-precio" class="field" type="number" min="0" step="0.01" placeholder="Precio" style="flex:1;">
+        <select id="inv-precio-moneda" class="field" style="width:84px; flex-shrink:0;"><option>MXN</option><option>JPY</option><option>USD</option></select>
       </div>
       <div style="display:flex; gap:6px;">
         <input id="inv-codigo" class="field" placeholder="Código de barras (opcional)" style="flex:1;">
@@ -568,7 +569,6 @@ textarea.field{resize:vertical; min-height:70px;}
       </div>
       <input id="inv-ubicacion" class="field" list="inv-ubicaciones-datalist" placeholder="Ubicación (ej. Recámara)" autocomplete="off">
       <datalist id="inv-ubicaciones-datalist"></datalist>
-      <input id="inv-origen" class="field" placeholder="Origen (opcional — ej. de dónde lo compraste)">
       <div class="foto-preview hidden" id="inv-foto-preview">
         <img id="inv-foto-img" src="" alt="">
         <button type="button" class="btn btn-text btn-sm" id="inv-foto-quitar">Quitar foto</button>
@@ -725,7 +725,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Treinta — mantén presionada una franja de tu horario en Hoy o en Calendario Día más de 1.2 segundos para editarla o eliminarla';
+const VERSION_TXT = 'Treinta y uno — Inventario General ahora vive junto con Alacena y Ropa en el Inventario de Gastos (mismo lugar para verlo todo)';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -2118,19 +2118,36 @@ async function asegurarBackendPropio(action, extra){
   return callGAS(state.gasUrlPropia, action, extra);
 }
 
+// Inventario General ya no tiene su propio backend — vive en Gastos
+// (su "📦 Inventario" real, filas con Grupo='General'), para que sea el
+// mismo lugar donde también se ve Alacena y Ropa. Se adapta la forma de
+// cada fila de Gastos (concepto/categoria/precioInd/...) a la forma vieja
+// (Nombre/Categoria/Precio/...) que ya usan renderInventarioList y
+// abrirModalInventario, para tocar lo menos posible de esas dos.
+function adaptarFilaGastosAInventario(g){
+  return {
+    ID: g.externoId, rowIndex: g.rowIndex,
+    Nombre: g.concepto, Categoria: g.categoria, Caracteristicas: g.notas||'',
+    Cantidad: parseInt(g.cantidad)||1, Precio: g.precioInd, PrecioMoneda: g.precioMoneda||'MXN',
+    Codigo: g.codigo, Ubicacion: g.ubicacion, FotoURL: g.fotoProducto, Papelera:false
+  };
+}
 async function pintarInventario(){
   const cont = document.getElementById('inv-list');
-  if(!state.gasUrlPropia){
-    cont.innerHTML = '<div class="empty-row">Configura la Web App propia de App Completa en Configuración → Conexiones para usar el Inventario General.</div>';
+  if(!state.conexiones.gastos || !state.gastosSesion){
+    cont.innerHTML = '<div class="empty-row">Conecta Gastos en Configuración → Conexiones (URL + sesión) para usar el Inventario.</div>';
     return;
   }
   cont.innerHTML = '<div class="empty-row">Cargando…</div>';
   try{
-    const data = await asegurarBackendPropio('getAll');
-    state.inventario = (data.data.inventario_general || []).filter(i=>!esVerdadero(i.Papelera));
-    state.categoriasInventario = (data.data.categorias_inventario || []);
+    const [data, cats] = await Promise.all([
+      callGAS(state.conexiones.gastos, 'getGastos', { sesion: state.gastosSesion, pass: state.gastosPass }),
+      callGAS(state.conexiones.gastos, 'getCategoriasInv', {})
+    ]);
+    state.inventario = (data.gastos||[]).filter(g=>g.tipoFila==='producto' && g.grupo==='General').map(adaptarFilaGastosAInventario);
+    state.categoriasInventario = (cats.categorias||[]).filter(c=>!esVerdadero(c.Papelera) && c.Grupo==='General');
     renderInventarioList();
-  } catch(e){ cont.innerHTML = `<div class="empty-row">No se pudo cargar: ${escapeHtml(e.message)}</div>`; }
+  } catch(e){ cont.innerHTML = `<div class="empty-row">No se pudo cargar: ${escapeHtml(e.message==='PASSWORD'?'contraseña de Gastos incorrecta':e.message)}</div>`; }
 }
 function renderInventarioList(){
   const cont = document.getElementById('inv-list');
@@ -2139,7 +2156,7 @@ function renderInventarioList(){
     <div class="row" data-id="${i.ID}">
       ${i.FotoURL ? `<img src="${i.FotoURL}" style="width:30px;height:30px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : `<div class="ic" style="background:var(--general);">📦</div>`}
       <div class="body"><div class="main">${escapeHtml(i.Nombre)} ${i.Cantidad>1?('× '+i.Cantidad):''}</div>
-      <div class="sub">${escapeHtml(i.Categoria||'')}${i.Precio?(' · '+money(i.Precio)):''}${i.Ubicacion?(' · '+escapeHtml(i.Ubicacion)):''}${i.Codigo?(' · #'+escapeHtml(i.Codigo)):''}</div></div>
+      <div class="sub">${escapeHtml(i.Categoria||'')}${i.Precio?(' · '+money(i.Precio)+(i.PrecioMoneda&&i.PrecioMoneda!=='MXN'?' '+i.PrecioMoneda:'')):''}${i.Ubicacion?(' · '+escapeHtml(i.Ubicacion)):''}${i.Codigo?(' · #'+escapeHtml(i.Codigo)):''}</div></div>
       <button class="icon-btn" data-del="${i.ID}">🗑</button>
     </div>
   `).join('');
@@ -2150,11 +2167,12 @@ function renderInventarioList(){
     b.addEventListener('click', (e)=>{
       e.stopPropagation();
       const item = state.inventario.find(x=>x.ID===b.dataset.del);
-      pedirConfirmacion('¿Eliminar "' + item.Nombre + '"?', 'Se manda a la papelera, se puede recuperar antes de 30 días.', async ()=>{
-        item.Papelera = true;
-        await asegurarBackendPropio('saveRow', { table:'INVENTARIO_GENERAL', row:item });
-        toast('Eliminado');
-        pintarInventario();
+      pedirConfirmacion('¿Eliminar "' + item.Nombre + '"?', 'Se manda a la papelera de Gastos (Eliminados), se puede recuperar desde ahí.', async ()=>{
+        try{
+          await callGAS(state.conexiones.gastos, 'deleteGasto', { rowIndex: item.rowIndex, soloFila:true, eliminadoPor: (state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre||'' });
+          toast('Eliminado');
+          pintarInventario();
+        } catch(e){ toast('Error: '+e.message); }
       });
     });
   });
@@ -2187,9 +2205,9 @@ function abrirModalInventario(idv){
   document.getElementById('inv-caracteristicas').value = item ? item.Caracteristicas : '';
   document.getElementById('inv-cantidad').value = item ? (item.Cantidad||1) : 1;
   document.getElementById('inv-precio').value = item ? (item.Precio||'') : '';
+  document.getElementById('inv-precio-moneda').value = item ? (item.PrecioMoneda||'MXN') : 'MXN';
   document.getElementById('inv-codigo').value = item ? (item.Codigo||'') : '';
   document.getElementById('inv-ubicacion').value = item ? item.Ubicacion : '';
-  document.getElementById('inv-origen').value = item ? item.Origen : '';
   const prev = document.getElementById('inv-foto-preview');
   if(item && item.FotoURL){ prev.classList.remove('hidden'); document.getElementById('inv-foto-img').src = item.FotoURL; }
   else{ prev.classList.add('hidden'); document.getElementById('inv-foto-img').src=''; }
@@ -2204,33 +2222,33 @@ document.getElementById('inv-foto-quitar').addEventListener('click', ()=>{
 document.getElementById('inv-guardar').addEventListener('click', async function(){
   const nombre = document.getElementById('inv-nombre').value.trim();
   if(!nombre){ toast('Ponle un nombre'); return; }
+  if(!state.conexiones.gastos || !state.gastosSesion){ toast('Conecta Gastos en Configuración → Conexiones'); return; }
   const btn = this;
   setBtnState(btn, 'saving', {saving:'Guardando…'});
-  const row = {
-    ID: document.getElementById('inv-id').value || undefined,
-    Nombre: nombre,
-    Categoria: document.getElementById('inv-categoria').value,
-    Caracteristicas: document.getElementById('inv-caracteristicas').value.trim(),
-    Cantidad: parseInt(document.getElementById('inv-cantidad').value)||1,
-    Precio: parseFloat(document.getElementById('inv-precio').value)||'',
-    Codigo: document.getElementById('inv-codigo').value.trim(),
-    Ubicacion: document.getElementById('inv-ubicacion').value.trim(),
-    Origen: document.getElementById('inv-origen').value.trim(),
-    Usuario: (state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre || '',
-    Papelera: false
-  };
   const idExistente = document.getElementById('inv-id').value;
   const existente = idExistente ? state.inventario.find(x=>x.ID===idExistente) : null;
-  if(existente) row.FotoURL = existente.FotoURL || '';
+  const externoId = idExistente || uid();
+  let fotoUrl = existente ? (existente.FotoURL||'') : '';
   try{
-    if(invFotoPendiente && invFotoPendiente.removida) row.FotoURL = '';
+    if(invFotoPendiente && invFotoPendiente.removida) fotoUrl = '';
     else if(invFotoPendiente && invFotoPendiente.base64){
       setBtnState(btn, 'saving', {saving:'Subiendo foto…'});
       const subida = await asegurarBackendPropio('uploadImage', { imageBase64:invFotoPendiente.base64, mimeType:invFotoPendiente.mime, fileName:'inv-'+Date.now()+'.jpg' });
-      if(subida.ok) row.FotoURL = subida.url;
+      if(subida.ok) fotoUrl = subida.url;
       setBtnState(btn, 'saving', {saving:'Guardando…'});
     }
-    await asegurarBackendPropio('saveRow', { table:'INVENTARIO_GENERAL', row });
+    await callGAS(state.conexiones.gastos, 'syncProductoExterno', {
+      sesion: state.gastosSesion, externoId, externoOrigen:'General', grupo:'General',
+      concepto: nombre,
+      categoria: document.getElementById('inv-categoria').value,
+      notas: document.getElementById('inv-caracteristicas').value.trim(),
+      cantidad: parseInt(document.getElementById('inv-cantidad').value)||1,
+      precioInd: parseFloat(document.getElementById('inv-precio').value)||'',
+      precioMoneda: document.getElementById('inv-precio-moneda').value,
+      codigo: document.getElementById('inv-codigo').value.trim(),
+      ubicacion: document.getElementById('inv-ubicacion').value.trim(),
+      fotoUrl
+    });
     setBtnState(btn, 'saved', {saved:'Guardado'});
     toast('Objeto guardado');
     setTimeout(()=>{ closeModal('modal-inv'); setBtnState(btn,'idle',{idle:'Guardar'}); }, 500);
@@ -2977,18 +2995,33 @@ document.getElementById('btn-gastos-sesion-guardar').addEventListener('click', a
    registros la usan — igual se archiva (los registros viejos conservan el
    nombre, solo deja de ofrecerse para capturas nuevas). ---- */
 async function pintarConfigCategorias(){
-  if(!state.gasUrlPropia) return;
   try{
-    const data = await asegurarBackendPropio('getAll');
-    state.categoriasInventario = data.data.categorias_inventario || [];
-    state.categoriasLugares = data.data.categorias_lugares || [];
-    state.inventario = (data.data.inventario_general || []).filter(i=>!esVerdadero(i.Papelera));
-    state.lugares = (data.data.mapa_lugares || []).filter(l=>!esVerdadero(l.Papelera));
+    if(state.conexiones.gastos){
+      const cats = await callGAS(state.conexiones.gastos, 'getCategoriasInv', {});
+      state.categoriasInventario = (cats.categorias||[]).filter(c=>c.Grupo==='General');
+    }
   } catch(e){ /* si falla, se usa lo que ya hubiera en memoria */ }
-  renderCategoriasEditor('cfg-cat-inventario-list', state.categoriasInventario, 'CATEGORIAS_INVENTARIO', state.inventario, 'Categoria', pintarConfigCategorias);
+  if(state.gasUrlPropia){
+    try{
+      const data = await asegurarBackendPropio('getAll');
+      state.categoriasLugares = data.data.categorias_lugares || [];
+      state.lugares = (data.data.mapa_lugares || []).filter(l=>!esVerdadero(l.Papelera));
+    } catch(e){ /* si falla, se usa lo que ya hubiera en memoria */ }
+  }
+  // Inventario General ya no vive en el backend propio del cascarón — vive
+  // en Gastos (Grupo='General'), así que su catálogo de categorías también
+  // se guarda ahí (saveCategoriaInv), CON renombrar-en-cascada hecho del
+  // lado del servidor (no un loop de saveRow por registro desde aquí, a
+  // diferencia de Lugares que sigue en el backend propio y sí lo hace así).
+  renderCategoriasEditor('cfg-cat-inventario-list', state.categoriasInventario, 'CATEGORIAS_INVENTARIO', state.inventario, 'categoria', pintarConfigCategorias, {
+    guardar: (row)=> callGAS(state.conexiones.gastos, 'saveCategoriaInv', { row: Object.assign({}, row, { Grupo:'General' }) }),
+    cascadeServerSide: true
+  });
   renderCategoriasEditor('cfg-cat-lugares-list', state.categoriasLugares, 'CATEGORIAS_LUGARES', state.lugares, 'Tipo', pintarConfigCategorias);
 }
-function renderCategoriasEditor(containerId, categorias, tabla, registrosQueUsan, campoUso, onChange){
+function renderCategoriasEditor(containerId, categorias, tabla, registrosQueUsan, campoUso, onChange, opts){
+  opts = opts || {};
+  const guardar = opts.guardar || ((row)=> asegurarBackendPropio('saveRow', { table:tabla, row }));
   const cont = document.getElementById(containerId);
   const activas = categorias.filter(c=>!esVerdadero(c.Papelera)).sort((a,b)=>(a.Orden||0)-(b.Orden||0));
   if(!activas.length){ cont.innerHTML = '<div class="empty-row">Sin categorías — agrega la primera abajo</div>'; return; }
@@ -3007,14 +3040,19 @@ function renderCategoriasEditor(containerId, categorias, tabla, registrosQueUsan
       const anterior = c.Nombre;
       c.Nombre = nuevo;
       try{
-        await asegurarBackendPropio('saveRow', { table:tabla, row:c });
-        const usados = registrosQueUsan.filter(r=>r[campoUso]===anterior);
-        for(const r of usados){
-          r[campoUso] = nuevo;
-          const tablaDestino = tabla==='CATEGORIAS_INVENTARIO' ? 'INVENTARIO_GENERAL' : 'MAPA_LUGARES';
-          await asegurarBackendPropio('saveRow', { table:tablaDestino, row:r });
+        if(opts.cascadeServerSide){
+          const r = await guardar(c);
+          toast(r && r.actualizados ? `Renombrado y actualizado en ${r.actualizados} registro(s)` : 'Renombrado');
+        } else {
+          await guardar(c);
+          const usados = registrosQueUsan.filter(r=>r[campoUso]===anterior);
+          for(const r of usados){
+            r[campoUso] = nuevo;
+            const tablaDestino = tabla==='CATEGORIAS_INVENTARIO' ? 'INVENTARIO_GENERAL' : 'MAPA_LUGARES';
+            await asegurarBackendPropio('saveRow', { table:tablaDestino, row:r });
+          }
+          toast(usados.length ? `Renombrado y actualizado en ${usados.length} registro(s)` : 'Renombrado');
         }
-        toast(usados.length ? `Renombrado y actualizado en ${usados.length} registro(s)` : 'Renombrado');
         if(onChange) onChange();
       } catch(e){ toast('Error: '+e.message); }
     });
@@ -3028,7 +3066,7 @@ function renderCategoriasEditor(containerId, categorias, tabla, registrosQueUsan
         enUso ? `La usan ${enUso} registro(s) — seguirán conservando este nombre, solo deja de ofrecerse para capturas nuevas.` : 'No la usa ningún registro todavía.',
         async ()=>{
           c.Papelera = true;
-          await asegurarBackendPropio('saveRow', { table:tabla, row:c });
+          await guardar(c);
           toast('Archivada');
           if(onChange) onChange();
         }
@@ -3043,7 +3081,8 @@ document.getElementById('btn-cat-inv-agregar').addEventListener('click', async f
   const btn = this;
   setBtnState(btn, 'saving', {saving:'Agregando…'});
   try{
-    await asegurarBackendPropio('saveRow', { table:'CATEGORIAS_INVENTARIO', row:{ Nombre:nombre, Emoji:'📌', Orden:state.categoriasInventario.length, Papelera:false } });
+    if(!state.conexiones.gastos) throw new Error('Conecta Gastos en Configuración → Conexiones');
+    await callGAS(state.conexiones.gastos, 'saveCategoriaInv', { row:{ Nombre:nombre, Grupo:'General', Emoji:'📌', Orden:state.categoriasInventario.length, Papelera:false } });
     inp.value = '';
     toast('Categoría agregada');
     pintarConfigCategorias();
