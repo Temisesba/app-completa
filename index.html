@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v35 (Fase B: elegir punto en el mapa + sugerencia de IA para Nuevo lugar) — GAS v8 -->
+<!-- App Completa — v35.1 (Fase B: fix — la sugerencia de IA nunca ofrecía intentar con Claude cuando Gemini fallaba) — GAS v8 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -2755,6 +2755,20 @@ document.getElementById('mapa-picker-usar').addEventListener('click', async ()=>
 
 // Fase B: sugerencia de IA (Gemini primero, Claude solo con permiso — mismo
 // criterio de "nunca de paga sin avisar" que ya usa el resto de la app).
+// OJO: no se usa asegurarBackendPropio/callGAS aquí a propósito — callGAS
+// avienta un error en cuanto ve CUALQUIER campo "error" en la respuesta
+// (incluido el {ok:false, sinCreditos:true, error:'Gemini sin créditos'} que
+// este backend regresa a propósito cuando Gemini falla), así que la rama
+// "ofrecer intentar con Claude" de abajo nunca se alcanzaría — se iría
+// directo al catch genérico. Fetch propio, sin ese auto-throw, para poder
+// distinguir de verdad "Gemini falló, ¿intentamos con Claude?" de un error
+// real de red/configuración.
+async function llamarBackendPropioSinThrow(action, extra){
+  if(!state.gasUrlPropia) throw new Error('Falta configurar tu propia Web App en Configuración → Conexiones');
+  const f = new FormData(); f.append('payload', JSON.stringify(Object.assign({action}, extra||{})));
+  const res = await fetch(state.gasUrlPropia, { method:'POST', body:f });
+  return res.json();
+}
 document.getElementById('lug-ia-sugerir').addEventListener('click', async function(){
   const descripcion = document.getElementById('lug-ia-desc').value.trim();
   if(!descripcion){ toast('Describe el lugar primero'); return; }
@@ -2762,13 +2776,13 @@ document.getElementById('lug-ia-sugerir').addEventListener('click', async functi
   setBtnState(btn, 'saving', {saving:'…'});
   const zona = Intl.DateTimeFormat().resolvedOptions().timeZone;
   try{
-    const res = await asegurarBackendPropio('iaSugerirUbicacion', { descripcion, zona });
+    const res = await llamarBackendPropioSinThrow('iaSugerirUbicacion', { descripcion, zona });
     if(!res.ok){
       setBtnState(btn, 'idle', {idle:'✨ IA'});
       pedirConfirmacion('Gemini no respondió', 'Puedo intentar con Claude (tiene costo). ¿Quieres intentar?', async ()=>{
         setBtnState(btn, 'saving', {saving:'…'});
         try{
-          const res2 = await asegurarBackendPropio('iaSugerirUbicacionClaude', { descripcion, zona });
+          const res2 = await llamarBackendPropioSinThrow('iaSugerirUbicacionClaude', { descripcion, zona });
           if(res2.ok) aplicarSugerenciaUbicacionIA(res2.data); else toast('Claude también falló: '+(res2.error||''));
         } catch(e){ toast('Error: '+e.message); }
         setBtnState(btn, 'idle', {idle:'✨ IA'});
