@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v34 (Fase A: clic en un evento de Google Calendar lo abre para editar/eliminar con editor propio, PATCH/DELETE directo a Calendar) — GAS v7 -->
+<!-- App Completa — v35 (Fase B: elegir punto en el mapa + sugerencia de IA para Nuevo lugar) — GAS v8 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -706,14 +706,36 @@ textarea.field{resize:vertical; min-height:70px;}
     <div style="margin-top:14px;">
       <input id="lug-nombre" class="field" placeholder="Nombre (ej. Superama Insurgentes)">
       <select id="lug-tipo" class="field"></select>
-      <button class="btn btn-secondary" id="lug-usar-ubicacion" style="margin-bottom:12px;">📍 Usar mi ubicación actual</button>
-      <p class="t-foot" id="lug-ubicacion-estado" style="margin:-6px 0 12px;">Sin ubicación capturada todavía</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:2px;">
+        <button class="btn btn-secondary" id="lug-usar-ubicacion" style="flex:1;">📍 Mi ubicación</button>
+        <button class="btn btn-secondary" id="lug-elegir-mapa" style="flex:1;">🗺️ Elegir en el mapa</button>
+      </div>
+      <p class="t-foot" id="lug-ubicacion-estado" style="margin:6px 0 12px;">Sin ubicación capturada todavía</p>
       <input id="lug-direccion" class="field" placeholder="Dirección (opcional)">
       <textarea id="lug-notas" class="field" placeholder="Notas (opcional)"></textarea>
+      <div style="display:flex; gap:6px; margin-top:8px;">
+        <input id="lug-ia-desc" class="field" placeholder="Describe el lugar (ej. el café donde desayunamos)" style="flex:1; margin:0;">
+        <button class="btn btn-secondary" id="lug-ia-sugerir" style="width:auto;">✨ IA</button>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="lug-cancelar">Cancelar</button>
       <button class="btn btn-primary" id="lug-guardar">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL elegir punto en el mapa (Fase B — reusado por Mapa de lugares y, luego, por eventos de viaje) ============ -->
+<div class="modal-overlay" id="modal-mapa-picker">
+  <div class="modal modal-wrap">
+    <button class="close-x" data-close-modal="modal-mapa-picker">✕</button>
+    <h2 class="t-title">Elegir punto</h2>
+    <p class="t-sub" style="margin-top:6px;">Toca el mapa o arrastra el pin para marcar el lugar exacto.</p>
+    <div id="mapa-picker-leaflet" style="height:280px; border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow); margin:10px 0;"></div>
+    <p class="t-foot" id="mapa-picker-direccion-preview">Sin punto elegido todavía</p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="mapa-picker-cancelar">Cancelar</button>
+      <button class="btn btn-primary" id="mapa-picker-usar">Usar este punto</button>
     </div>
   </div>
 </div>
@@ -754,7 +776,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Treinta y cuatro — dar clic a un evento de Google Calendar ahora lo abre para editar u eliminar, con editor propio';
+const VERSION_TXT = 'Treinta y cinco — en Mapa, Nuevo lugar ya deja elegir el punto directo en el mapa (con dirección automática) y pedirle a la IA que llene el lugar a partir de una descripción';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -2656,6 +2678,7 @@ function abrirModalLugar(idv){
   document.getElementById('lug-lat').value = l ? (l.Lat||'') : '';
   document.getElementById('lug-lng').value = l ? (l.Lng||'') : '';
   document.getElementById('lug-ubicacion-estado').textContent = (l && l.Lat) ? ('Ubicación capturada ✓ ('+parseFloat(l.Lat).toFixed(4)+', '+parseFloat(l.Lng).toFixed(4)+')') : 'Sin ubicación capturada todavía';
+  document.getElementById('lug-ia-desc').value = '';
   openModal('modal-lugar');
 }
 document.getElementById('lug-usar-ubicacion').addEventListener('click', function(){
@@ -2666,13 +2689,112 @@ document.getElementById('lug-usar-ubicacion').addEventListener('click', function
     document.getElementById('lug-lat').value = pos.coords.latitude;
     document.getElementById('lug-lng').value = pos.coords.longitude;
     document.getElementById('lug-ubicacion-estado').textContent = 'Ubicación capturada ✓ ('+pos.coords.latitude.toFixed(4)+', '+pos.coords.longitude.toFixed(4)+')';
-    setBtnState(btn, 'idle', {idle:'📍 Usar mi ubicación actual'});
+    setBtnState(btn, 'idle', {idle:'📍 Mi ubicación'});
     toast('Ubicación capturada');
   }, (err)=>{
-    setBtnState(btn, 'idle', {idle:'📍 Usar mi ubicación actual'});
+    setBtnState(btn, 'idle', {idle:'📍 Mi ubicación'});
     toast('No se pudo obtener tu ubicación: ' + err.message);
   }, { timeout:10000 });
 });
+
+// Fase B: elegir un punto en el mapa a mano (Leaflet + pin arrastrable) con
+// dirección automática vía Nominatim (OpenStreetMap, gratis, sin llave —
+// mismo servicio que ya usa Itinerario para esto). Mapa propio y chico,
+// separado del mapa grande de la pantalla Mapa (pintarMapa/mapaLeaflet) para
+// no interferir con él — se crea la primera vez que se abre este selector.
+let mapaPickerLeaflet = null, mapaPickerMarker = null, mapaPickerCoords = null;
+function inicializarMapaPickerSiHaceFalta(){
+  if(mapaPickerLeaflet) return;
+  mapaPickerLeaflet = L.map('mapa-picker-leaflet').setView([19.4326, -99.1332], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap' }).addTo(mapaPickerLeaflet);
+  mapaPickerMarker = L.marker([19.4326, -99.1332], { draggable:true }).addTo(mapaPickerLeaflet);
+  const alMover = (latlng)=>{
+    mapaPickerCoords = latlng;
+    document.getElementById('mapa-picker-direccion-preview').textContent = 'Buscando dirección…';
+    reverseGeocodeNominatim(latlng.lat, latlng.lng).then(dir=>{
+      document.getElementById('mapa-picker-direccion-preview').textContent = dir || ('('+latlng.lat.toFixed(5)+', '+latlng.lng.toFixed(5)+')');
+    });
+  };
+  mapaPickerMarker.on('dragend', ()=> alMover(mapaPickerMarker.getLatLng()));
+  mapaPickerLeaflet.on('click', (e)=>{ mapaPickerMarker.setLatLng(e.latlng); alMover(e.latlng); });
+}
+async function reverseGeocodeNominatim(lat, lng){
+  try{
+    const res = await fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lng+'&zoom=18&addressdetails=0');
+    const data = await res.json();
+    return data && data.display_name || '';
+  } catch(e){ return ''; }
+}
+document.getElementById('lug-elegir-mapa').addEventListener('click', ()=>{
+  openModal('modal-mapa-picker');
+  inicializarMapaPickerSiHaceFalta();
+  setTimeout(()=>{
+    mapaPickerLeaflet.invalidateSize();
+    const latActual = parseFloat(document.getElementById('lug-lat').value);
+    const lngActual = parseFloat(document.getElementById('lug-lng').value);
+    if(!isNaN(latActual) && !isNaN(lngActual)){
+      mapaPickerLeaflet.setView([latActual, lngActual], 16);
+      mapaPickerMarker.setLatLng([latActual, lngActual]);
+      mapaPickerCoords = { lat:latActual, lng:lngActual };
+      document.getElementById('mapa-picker-direccion-preview').textContent = '('+latActual.toFixed(5)+', '+lngActual.toFixed(5)+')';
+    } else {
+      document.getElementById('mapa-picker-direccion-preview').textContent = 'Toca el mapa para elegir un punto';
+    }
+  }, 50);
+});
+document.getElementById('mapa-picker-cancelar').addEventListener('click', ()=> closeModal('modal-mapa-picker'));
+document.getElementById('mapa-picker-usar').addEventListener('click', async ()=>{
+  if(!mapaPickerCoords){ toast('Primero toca el mapa para elegir un punto'); return; }
+  document.getElementById('lug-lat').value = mapaPickerCoords.lat;
+  document.getElementById('lug-lng').value = mapaPickerCoords.lng;
+  document.getElementById('lug-ubicacion-estado').textContent = 'Ubicación capturada ✓ ('+mapaPickerCoords.lat.toFixed(4)+', '+mapaPickerCoords.lng.toFixed(4)+')';
+  const dir = await reverseGeocodeNominatim(mapaPickerCoords.lat, mapaPickerCoords.lng);
+  if(dir) document.getElementById('lug-direccion').value = dir;
+  closeModal('modal-mapa-picker');
+});
+
+// Fase B: sugerencia de IA (Gemini primero, Claude solo con permiso — mismo
+// criterio de "nunca de paga sin avisar" que ya usa el resto de la app).
+document.getElementById('lug-ia-sugerir').addEventListener('click', async function(){
+  const descripcion = document.getElementById('lug-ia-desc').value.trim();
+  if(!descripcion){ toast('Describe el lugar primero'); return; }
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'…'});
+  const zona = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  try{
+    const res = await asegurarBackendPropio('iaSugerirUbicacion', { descripcion, zona });
+    if(!res.ok){
+      setBtnState(btn, 'idle', {idle:'✨ IA'});
+      pedirConfirmacion('Gemini no respondió', 'Puedo intentar con Claude (tiene costo). ¿Quieres intentar?', async ()=>{
+        setBtnState(btn, 'saving', {saving:'…'});
+        try{
+          const res2 = await asegurarBackendPropio('iaSugerirUbicacionClaude', { descripcion, zona });
+          if(res2.ok) aplicarSugerenciaUbicacionIA(res2.data); else toast('Claude también falló: '+(res2.error||''));
+        } catch(e){ toast('Error: '+e.message); }
+        setBtnState(btn, 'idle', {idle:'✨ IA'});
+      });
+      return;
+    }
+    aplicarSugerenciaUbicacionIA(res.data);
+  } catch(e){ toast('Error: '+e.message); }
+  setBtnState(btn, 'idle', {idle:'✨ IA'});
+});
+function aplicarSugerenciaUbicacionIA(d){
+  if(!d) return;
+  if(d.nombre) document.getElementById('lug-nombre').value = d.nombre;
+  if(d.categoria){
+    const sel = document.getElementById('lug-tipo');
+    const existe = Array.from(sel.options).some(o=>o.value.toLowerCase()===d.categoria.toLowerCase());
+    if(existe) sel.value = Array.from(sel.options).find(o=>o.value.toLowerCase()===d.categoria.toLowerCase()).value;
+  }
+  if(d.direccion) document.getElementById('lug-direccion').value = d.direccion;
+  if(d.lat!=null && d.lng!=null){
+    document.getElementById('lug-lat').value = d.lat;
+    document.getElementById('lug-lng').value = d.lng;
+    document.getElementById('lug-ubicacion-estado').textContent = 'Ubicación capturada ✓ ('+parseFloat(d.lat).toFixed(4)+', '+parseFloat(d.lng).toFixed(4)+')';
+  }
+  toast('Sugerencia de la IA aplicada — revísala antes de guardar');
+}
 document.getElementById('lug-cancelar').addEventListener('click', ()=> closeModal('modal-lugar'));
 document.getElementById('lug-guardar').addEventListener('click', async function(){
   const nombre = document.getElementById('lug-nombre').value.trim();
