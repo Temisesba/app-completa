@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v36 (Fase C: viajes de Itinerario aparecen de solo lectura en Tu horario de hoy/Calendario cuando coincide la fecha) — GAS v8 -->
+<!-- App Completa — v37 (Biblia: en el menú de apps + widget en Hoy con último capítulo leído, fecha y nota) — GAS v8 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -781,7 +781,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Treinta y seis — tus viajes de Itinerario ya aparecen (de solo lectura) en Tu horario de hoy y en Calendario cuando la fecha coincide; Itinerario también aparece ya en el menú de apps';
+const VERSION_TXT = 'Treinta y siete — Biblia ya está en el menú de apps, y en Hoy aparece un widget con tu último capítulo leído, la fecha y la nota más reciente de ese capítulo';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -791,7 +791,8 @@ const APP_LINKS = {
   acuerdos: { nombre:'Acuerdos', emoji:'🤝', color:'var(--acuerdos)', url:'https://temisesba.github.io/acuerdos/' },
   ropa:     { nombre:'Closet',   emoji:'👕', color:'var(--ropa)',     url:'https://temisesba.github.io/ropa/' },
   notas:    { nombre:'Organizador', emoji:'📔', color:'var(--notas)', url:'https://temisesba.github.io/organizador/' },
-  itinerario: { nombre:'Itinerario', emoji:'🧳', color:'var(--general)', url:'https://temisesba.github.io/Itinerario/itinerario_v55.html' }
+  itinerario: { nombre:'Itinerario', emoji:'🧳', color:'var(--general)', url:'https://temisesba.github.io/Itinerario/itinerario_v55.html' },
+  biblia: { nombre:'Biblia', emoji:'📖', color:'var(--general)', url:'https://biblia-estudio-three.vercel.app' }
 };
 
 const LS = {
@@ -1129,6 +1130,7 @@ const NAV_ITEMS = [
   { id:'app:ropa', icon:'👕', label:'Closet', tab:false, externo:true },
   { id:'app:acuerdos', icon:'🤝', label:'Acuerdos', tab:false, externo:true },
   { id:'app:itinerario', icon:'🧳', label:'Itinerario', tab:false, externo:true },
+  { id:'app:biblia', icon:'📖', label:'Biblia', tab:false, externo:true },
   { id:'ia', icon:'💬', label:'IA', tab:false, widget:true },
   { id:'config', icon:'⚙️', label:'Config', tab:false },
 ];
@@ -1267,6 +1269,11 @@ async function cargarHomeWidgets(){
   // así que en la Fase 1 el Home solo enlaza — el resumen en vivo llega
   // cuando se conecte la IA/rutas automáticas (Fase 4).
   piezas.push(Promise.resolve({ icon:'💳', color:'var(--gastos)', titulo:'Próximos pagos', sub:'Ábrelo para ver tu Finanzas', accion:()=>irApp('gastos') }));
+  // Biblia: último capítulo leído/fecha/nota — vía la ruta API propia de esa
+  // app (Next.js+Supabase, no Google Sheets como las demás), con CORS ya
+  // habilitado para este origen. Si la app está dormida (cold start de
+  // Vercel) o falla, el widget solo se omite — nunca tumba el resto del Home.
+  piezas.push(construirWidgetBiblia());
 
   const resultados = await Promise.all(piezas.map(p => p.catch(()=>null)));
   cont.innerHTML = '';
@@ -1301,6 +1308,18 @@ async function construirWidgetComida(){
   return { icon:'🍽️', color:'var(--comidas)', titulo:'Comida de hoy', sub: nombres.join(' · ') || (deHoy.length+' planeado(s)'), accion:()=>irApp('comidas') };
 }
 
+async function construirWidgetBiblia(){
+  try{
+    const res = await fetch('https://biblia-estudio-three.vercel.app/api/ultimo-progreso');
+    const data = await res.json();
+    if(data.error || !data.libro) return { icon:'📖', color:'var(--general)', titulo:'Biblia', sub:'Sin lecturas registradas todavía', accion:()=>irApp('biblia') };
+    const fecha = data.fecha ? new Date(data.fecha).toLocaleDateString('es-MX',{day:'numeric',month:'short'}) : '';
+    const partes = [`${data.libro} ${data.capitulo}`];
+    if(fecha) partes.push(fecha);
+    if(data.nota) partes.push('📝 '+String(data.nota).slice(0,40));
+    return { icon:'📖', color:'var(--general)', titulo:'Último capítulo leído', sub: partes.join(' · '), accion:()=>irApp('biblia') };
+  } catch(e){ return { icon:'📖', color:'var(--general)', titulo:'Biblia', sub:'No se pudo cargar', accion:()=>irApp('biblia') }; }
+}
 async function construirWidgetAcuerdos(){
   const url = state.conexiones.acuerdos;
   if(!url) return { icon:'🤝', color:'var(--acuerdos)', titulo:'Acuerdos pendientes', sub:'Conecta Acuerdos en Configuración', accion:()=>irAVista('config') };
