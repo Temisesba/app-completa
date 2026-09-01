@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v40 (Gastos pendientes en Hoy ya muestra deudas reales por sesión, no solo un enlace) — GAS v8 -->
+<!-- App Completa — v41 (fix: "Outfit de hoy" comparaba fecha local contra el ISO completo de Ropa y nunca hacía match — ahora usa el mismo criterio que Ropa mismo) — GAS v8 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -781,7 +781,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Cuarenta — el widget de Gastos en Hoy ya muestra tus deudas reales por sesión (quién te debe / a quién le debes), leyendo tu contraseña personal de Finanzas ya guardada en este dispositivo — antes solo era un enlace';
+const VERSION_TXT = 'Cuarenta y uno — arreglé "Outfit de hoy": comparaba tu fecha de hoy contra el formato completo que guarda Ropa (con hora) y nunca coincidía, así que siempre se veía en 0 aunque sí tuvieras outfit puesto';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1412,10 +1412,16 @@ async function construirColapsableOutfit(){
     const data = await callGAS(url, 'getAll');
     const usos = (data.data && data.data.usos) || [];
     const prendas = (data.data && data.data.prendas) || [];
-    const hoy = hoyISO();
-    const usoHoy = usos.find(u=>u.Fecha===hoy);
-    let ids = [];
-    if(usoHoy){ try{ ids = JSON.parse(usoHoy.PrendaIDsJSON||'[]'); }catch(e){} }
+    // Mismo criterio de "hoy" que usa Ropa mismo (hoyYMD/renderHoyPreview en
+    // ropa.html): Fecha se guarda como ISO completo (new Date().toISOString(),
+    // con hora), así que comparar contra la fecha local de hoyISO() nunca
+    // daba match — se quedaba en 0 aunque sí hubiera outfit puesto. Además
+    // puede haber más de un registro de uso el mismo día (se agregó ropa
+    // aparte), así que se juntan las prendas de TODOS los de hoy, no solo
+    // el primero.
+    const hoy = new Date().toISOString().slice(0,10);
+    const usosHoy = usos.filter(u=>u.Fecha && u.Fecha.slice(0,10)===hoy);
+    const ids = [...new Set(usosHoy.flatMap(u=>{ try{ return JSON.parse(u.PrendaIDsJSON||'[]'); }catch(e){ return []; } }))];
     badge.textContent = ids.length;
     const nombres = ids.map(id=>{ const p = prendas.find(x=>x.ID===id); return p ? [p.Tipo,p.Color].filter(Boolean).join(' ') : null; }).filter(Boolean);
     body.innerHTML = nombres.length ? nombres.map(n=>`<div class="row disabled"><div class="ic" style="background:var(--ropa);">👕</div><div class="body"><div class="main">${escapeHtml(n)}</div></div></div>`).join('') : '<div class="empty-row">Sin outfit registrado hoy</div>';
