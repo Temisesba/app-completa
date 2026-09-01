@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v42 (fix: "Tu horario de hoy" a veces se veía vacío al cargar aunque sí había rutina/eventos de Google Calendar — dos getAll concurrentes al mismo backend + sin reintento si el refresh de token fallaba una vez) — GAS v8 -->
+<!-- App Completa — v43 (nuevo: "+ Viaje" en Hoy agrega restaurante/transporte/hospedaje de verdad a Itinerario, mismo diseño de App_Completa) — GAS v8 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -367,6 +367,7 @@ textarea.field{resize:vertical; min-height:70px;}
           <button class="btn btn-secondary btn-sm" id="btn-horario-tarea">+ Tarea</button>
           <button class="btn btn-secondary btn-sm" id="btn-horario-registro-tiempo">⏱ Registro de tiempo y sueño</button>
           <button class="btn btn-secondary btn-sm" id="btn-editar-rutina">✏️ Mi horario</button>
+          <button class="btn btn-secondary btn-sm" id="btn-viaje-nuevo">🧳 + Viaje</button>
         </div>
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
           <button class="btn btn-secondary btn-sm hidden" id="btn-conectar-gcal">🗓️ Conectar Google Calendar</button>
@@ -745,6 +746,87 @@ textarea.field{resize:vertical; min-height:70px;}
   </div>
 </div>
 
+<!-- ============ MODAL agregar de viaje (Fase E — escribe de verdad en Itinerario) ============ -->
+<div class="modal-overlay" id="modal-viaje-nuevo">
+  <div class="modal modal-wrap">
+    <button class="close-x" data-close-modal="modal-viaje-nuevo">✕</button>
+    <h2 class="t-title">Agregar de viaje</h2>
+    <p class="t-sub" style="margin-top:6px;">Esto se guarda de verdad en Itinerario — si ese día todavía no existe ahí, se crea solo.</p>
+    <div class="chip-row" id="viaje-tipo-chips" style="margin-top:10px;">
+      <button class="chip active" data-viaje-tipo="restaurante">🍽️ Restaurante</button>
+      <button class="chip" data-viaje-tipo="transporte">🚗 Transporte</button>
+      <button class="chip" data-viaje-tipo="hospedaje">🏨 Hospedaje</button>
+    </div>
+
+    <div id="viaje-campos-restaurante" style="margin-top:12px;">
+      <input id="vj-r-nombre" class="field" placeholder="Nombre del restaurante">
+      <input id="vj-r-direccion" class="field" placeholder="Dirección (opcional)">
+      <div style="display:flex; gap:10px;">
+        <input type="date" id="vj-r-fecha" class="field" style="flex:1;">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Hora (opcional)</label><input type="time" id="vj-r-hora-inicio" class="field"></div>
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Hora fin (opcional)</label><input type="time" id="vj-r-hora-fin" class="field"></div>
+      </div>
+      <input id="vj-r-antojo" class="field" placeholder="Antojo / qué quieres pedir (opcional)">
+      <select id="vj-r-reservado" class="field">
+        <option value="pendiente">Reserva: pendiente</option>
+        <option value="si">Reserva: hecha</option>
+        <option value="no_requiere">No requiere reserva</option>
+      </select>
+    </div>
+
+    <div id="viaje-campos-transporte" style="margin-top:12px; display:none;">
+      <select id="vj-t-tipo" class="field">
+        <option value="Vuelo">✈️ Vuelo</option>
+        <option value="Tren">🚄 Tren</option>
+        <option value="Autobús">🚌 Autobús</option>
+        <option value="Auto">🚗 Auto</option>
+        <option value="Taxi">🚕 Taxi</option>
+        <option value="Otro">Otro</option>
+      </select>
+      <input id="vj-t-origen" class="field" placeholder="Origen">
+      <input id="vj-t-destino" class="field" placeholder="Destino">
+      <div style="display:flex; gap:10px;">
+        <input type="date" id="vj-t-fecha" class="field" style="flex:1;">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Salida (opcional)</label><input type="time" id="vj-t-salida" class="field"></div>
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Llegada (opcional)</label><input type="time" id="vj-t-llegada" class="field"></div>
+      </div>
+      <input id="vj-t-notas" class="field" placeholder="Notas (ej. núm. de vuelo/reservación)">
+      <select id="vj-t-reservado" class="field">
+        <option value="pendiente">Reserva: pendiente</option>
+        <option value="si">Reserva: hecha</option>
+        <option value="no_requiere">No requiere reserva</option>
+      </select>
+    </div>
+
+    <div id="viaje-campos-hospedaje" style="margin-top:12px; display:none;">
+      <input id="vj-h-nombre" class="field" placeholder="Nombre del hotel/hospedaje">
+      <input id="vj-h-direccion" class="field" placeholder="Dirección (opcional)">
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Check-in</label><input type="date" id="vj-h-fecha-in" class="field"></div>
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Hora (opcional)</label><input type="time" id="vj-h-hora-in" class="field"></div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Check-out</label><input type="date" id="vj-h-fecha-out" class="field"></div>
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Hora (opcional)</label><input type="time" id="vj-h-hora-out" class="field"></div>
+      </div>
+      <select id="vj-h-reservado" class="field">
+        <option value="pendiente">Reserva: pendiente</option>
+        <option value="si">Reserva: hecha</option>
+        <option value="no_requiere">No requiere reserva</option>
+      </select>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="vj-cancelar">Cancelar</button>
+      <button class="btn btn-primary" id="vj-guardar">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MODAL confirmar gasto (desde la IA) ============ -->
 <div class="modal-overlay" id="modal-gasto">
   <div class="modal modal-wrap">
@@ -781,7 +863,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Cuarenta y dos — arreglé que "Tu horario de hoy" a veces se veía vacío al cargar la app (aunque sí tuvieras eventos/rutina): pedía Organizador dos veces al mismo tiempo y no reintentaba si fallaba una vez el refresh del token de Google Calendar';
+const VERSION_TXT = 'Cuarenta y tres — nuevo botón "🧳 + Viaje" en Hoy: agrega restaurante, transporte u hospedaje directo desde aquí, y se guarda de verdad en Itinerario (si ese día no existía ahí todavía, se crea solo)';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1690,8 +1772,113 @@ function itemsDeViajeParaFecha(fecha){
     const elegida = opciones[t.opcionElegida] || opciones[0] || {};
     items.push({ tipo:'viaje', id:t.id, hora: elegida.salida||'', actividad:'🚗 '+(t.origen||'?')+' → '+(t.destino||'?'), obs:t.tipo||'', hecho:!!t.realizado, horaReal:'', logId:null });
   });
+  // Hospedaje no se traía antes a esta lista (Fase C solo cubría
+  // pendientes/eventos/transporte) — se muestra el check-in y el check-out
+  // como dos avisos separados, en el día que de verdad le toca a cada uno.
+  (d.hospedaje||[]).forEach(h=>{
+    if(caeHoy(fechaDeDiaId(h.diaIdInicio))) items.push({ tipo:'viaje', id:h.id+'-in', hora:h.horaCheckIn||'', actividad:'🏨 Check-in: '+(h.nombre||''), obs:h.direccion||'', hecho:false, horaReal:'', logId:null });
+    if(h.diaIdFin && h.diaIdFin!==h.diaIdInicio && caeHoy(fechaDeDiaId(h.diaIdFin))) items.push({ tipo:'viaje', id:h.id+'-out', hora:h.horaCheckOut||'', actividad:'🏨 Check-out: '+(h.nombre||''), obs:h.direccion||'', hecho:false, horaReal:'', logId:null });
+  });
   return items;
 }
+// Fase E: agregar restaurante/transporte/hospedaje DE VERDAD a Itinerario
+// desde App_Completa — ya no solo lectura. El backend de Itinerario no
+// tiene un "saveRow" genérico (acciones propias por tabla) ni LockService
+// (confirmado leyendo su Código.js), así que aquí se llama cada acción tal
+// cual existe allá — sin inventar nombres ni payloads.
+async function callItinerario(action, extra){
+  if(!state.conexiones.itinerario) throw new Error('Conecta Itinerario en Configuración → Conexiones');
+  return callGAS(state.conexiones.itinerario, action, extra||{});
+}
+// Busca el día de Itinerario para esa fecha; si no existe todavía (pedido
+// explícito: "cualquier día, aunque no haya viaje creado"), lo crea con
+// saveDia (proyecto/zona vacíos — el backend lo permite, aunque la propia
+// UI de Itinerario nunca lo hace así). saveDia no devuelve el ID creado en
+// su respuesta (confirmado leyendo el backend), así que después de crearlo
+// se refresca itinerarioData y se busca por fecha en vez de adivinar la
+// forma de la respuesta.
+async function resolverDiaIdParaFecha(fechaISO){
+  await fetchItinerarioSiHaceFalta();
+  let dia = (state.itinerarioData && state.itinerarioData.dias || []).find(d=>d.fecha===fechaISO);
+  if(dia) return dia.id;
+  await callItinerario('saveDia', { fecha: fechaISO, zona:'', notas:'', proyecto:'' });
+  await fetchItinerarioSiHaceFalta(true);
+  dia = (state.itinerarioData && state.itinerarioData.dias || []).find(d=>d.fecha===fechaISO);
+  if(!dia) throw new Error('No se pudo crear el día en Itinerario');
+  return dia.id;
+}
+async function refrescarTrasGuardarViaje(){
+  await fetchItinerarioSiHaceFalta(true);
+  if(state.vista==='calendario') await pintarCalendario(true);
+  else await cargarHorarioTareasRegistro(true);
+}
+function abrirModalViajeNuevo(){
+  const hoy = new Date().toISOString().slice(0,10);
+  ['vj-r-fecha','vj-t-fecha','vj-h-fecha-in','vj-h-fecha-out'].forEach(id=> document.getElementById(id).value = hoy);
+  ['vj-r-nombre','vj-r-direccion','vj-r-hora-inicio','vj-r-hora-fin','vj-r-antojo','vj-t-origen','vj-t-destino','vj-t-salida','vj-t-llegada','vj-t-notas','vj-h-nombre','vj-h-direccion','vj-h-hora-in','vj-h-hora-out'].forEach(id=> document.getElementById(id).value='');
+  document.getElementById('vj-r-reservado').value='pendiente';
+  document.getElementById('vj-t-reservado').value='pendiente';
+  document.getElementById('vj-h-reservado').value='pendiente';
+  document.getElementById('vj-t-tipo').value='Auto';
+  seleccionarTipoViaje('restaurante');
+  openModal('modal-viaje-nuevo');
+}
+function seleccionarTipoViaje(tipo){
+  document.querySelectorAll('#viaje-tipo-chips [data-viaje-tipo]').forEach(b=> b.classList.toggle('active', b.dataset.viajeTipo===tipo));
+  document.getElementById('viaje-campos-restaurante').style.display = tipo==='restaurante' ? '' : 'none';
+  document.getElementById('viaje-campos-transporte').style.display = tipo==='transporte' ? '' : 'none';
+  document.getElementById('viaje-campos-hospedaje').style.display = tipo==='hospedaje' ? '' : 'none';
+}
+document.querySelectorAll('#viaje-tipo-chips [data-viaje-tipo]').forEach(b=> b.addEventListener('click', ()=> seleccionarTipoViaje(b.dataset.viajeTipo)));
+document.getElementById('btn-viaje-nuevo').addEventListener('click', abrirModalViajeNuevo);
+document.getElementById('vj-cancelar').addEventListener('click', ()=> closeModal('modal-viaje-nuevo'));
+document.getElementById('vj-guardar').addEventListener('click', async function(){
+  const tipo = document.querySelector('#viaje-tipo-chips .chip.active').dataset.viajeTipo;
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Guardando…'});
+  try{
+    if(tipo==='restaurante'){
+      const nombre = document.getElementById('vj-r-nombre').value.trim();
+      if(!nombre){ toast('Ponle un nombre al restaurante'); setBtnState(btn,'idle',{idle:'Guardar'}); return; }
+      const fecha = document.getElementById('vj-r-fecha').value;
+      if(!fecha){ toast('Elige una fecha'); setBtnState(btn,'idle',{idle:'Guardar'}); return; }
+      const diaId = await resolverDiaIdParaFecha(fecha);
+      await callItinerario('savePendiente', {
+        diaId, nombre, direccion: document.getElementById('vj-r-direccion').value.trim(),
+        horaInicio: document.getElementById('vj-r-hora-inicio').value, horaFin: document.getElementById('vj-r-hora-fin').value,
+        antojo: document.getElementById('vj-r-antojo').value.trim(), esRestaurante: true,
+        reservado: document.getElementById('vj-r-reservado').value
+      });
+    } else if(tipo==='transporte'){
+      const origen = document.getElementById('vj-t-origen').value.trim(), destino = document.getElementById('vj-t-destino').value.trim();
+      if(!origen || !destino){ toast('Ponle origen y destino'); setBtnState(btn,'idle',{idle:'Guardar'}); return; }
+      const fecha = document.getElementById('vj-t-fecha').value;
+      if(!fecha){ toast('Elige una fecha'); setBtnState(btn,'idle',{idle:'Guardar'}); return; }
+      const diaId = await resolverDiaIdParaFecha(fecha);
+      await callItinerario('saveTransporte', {
+        diaId, tipo: document.getElementById('vj-t-tipo').value, origen, destino,
+        opciones: [{ salida: document.getElementById('vj-t-salida').value, llegada: document.getElementById('vj-t-llegada').value, notas: document.getElementById('vj-t-notas').value.trim() }],
+        opcionElegida: 0, reservado: document.getElementById('vj-t-reservado').value
+      });
+    } else {
+      const nombre = document.getElementById('vj-h-nombre').value.trim();
+      if(!nombre){ toast('Ponle un nombre al hospedaje'); setBtnState(btn,'idle',{idle:'Guardar'}); return; }
+      const fechaIn = document.getElementById('vj-h-fecha-in').value, fechaOut = document.getElementById('vj-h-fecha-out').value;
+      if(!fechaIn){ toast('Elige la fecha de check-in'); setBtnState(btn,'idle',{idle:'Guardar'}); return; }
+      const diaIdInicio = await resolverDiaIdParaFecha(fechaIn);
+      const diaIdFin = fechaOut ? await resolverDiaIdParaFecha(fechaOut) : diaIdInicio;
+      await callItinerario('saveHospedaje', {
+        diaIdInicio, diaIdFin, nombre, direccion: document.getElementById('vj-h-direccion').value.trim(),
+        horaCheckIn: document.getElementById('vj-h-hora-in').value, horaCheckOut: document.getElementById('vj-h-hora-out').value,
+        reservado: document.getElementById('vj-h-reservado').value
+      });
+    }
+    closeModal('modal-viaje-nuevo');
+    toast('Guardado en Itinerario');
+    await refrescarTrasGuardarViaje();
+  } catch(e){ toast('Error: '+e.message); }
+  setBtnState(btn, 'idle', {idle:'Guardar'});
+});
 async function fetchEventosGoogleHoy(){
   const hoy = new Date();
   const dayStart = new Date(hoy); dayStart.setHours(0,0,0,0);
