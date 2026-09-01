@@ -1793,19 +1793,18 @@ async function callItinerario(action, extra){
 // Busca el día de Itinerario para esa fecha; si no existe todavía (pedido
 // explícito: "cualquier día, aunque no haya viaje creado"), lo crea con
 // saveDia (proyecto/zona vacíos — el backend lo permite, aunque la propia
-// UI de Itinerario nunca lo hace así). saveDia no devuelve el ID creado en
-// su respuesta (confirmado leyendo el backend), así que después de crearlo
-// se refresca itinerarioData y se busca por fecha en vez de adivinar la
-// forma de la respuesta.
+// UI de Itinerario nunca lo hace así). saveDia sí devuelve {ok,id} directo
+// (confirmado leyendo el backend), así que no hace falta otro round-trip
+// completo — solo se refleja el nuevo día en el caché local.
 async function resolverDiaIdParaFecha(fechaISO){
   await fetchItinerarioSiHaceFalta();
-  let dia = (state.itinerarioData && state.itinerarioData.dias || []).find(d=>d.fecha===fechaISO);
-  if(dia) return dia.id;
-  await callItinerario('saveDia', { fecha: fechaISO, zona:'', notas:'', proyecto:'' });
-  await fetchItinerarioSiHaceFalta(true);
-  dia = (state.itinerarioData && state.itinerarioData.dias || []).find(d=>d.fecha===fechaISO);
-  if(!dia) throw new Error('No se pudo crear el día en Itinerario');
-  return dia.id;
+  const dias = (state.itinerarioData && state.itinerarioData.dias) || [];
+  const existente = dias.find(d=>d.fecha===fechaISO);
+  if(existente) return existente.id;
+  const res = await callItinerario('saveDia', { fecha: fechaISO, zona:'', notas:'', proyecto:'' });
+  if(!res || !res.id) throw new Error('No se pudo crear el día en Itinerario');
+  if(state.itinerarioData) state.itinerarioData.dias = [...dias, { id:res.id, fecha:fechaISO, zona:'', notas:'', proyecto:'' }];
+  return res.id;
 }
 async function refrescarTrasGuardarViaje(){
   await fetchItinerarioSiHaceFalta(true);
