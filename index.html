@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v43 (nuevo: "+ Viaje" en Hoy agrega restaurante/transporte/hospedaje de verdad a Itinerario, mismo diseño de App_Completa) — GAS v8 -->
+<!-- App Completa — v44 (fix: si Google Calendar se desconecta/caduca, "Tu horario de hoy" ahora dice el motivo real y ofrece reconectar, en vez de verse igual que "no hay nada planeado hoy") — GAS v8 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -863,7 +863,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Cuarenta y tres — nuevo botón "🧳 + Viaje" en Hoy: agrega restaurante, transporte u hospedaje directo desde aquí, y se guarda de verdad en Itinerario (si ese día no existía ahí todavía, se crea solo)';
+const VERSION_TXT = 'Cuarenta y cuatro — si tu conexión con Google Calendar se cae o caduca, "Tu horario de hoy" ahora te dice el motivo real y te deja reconectar con un botón, en vez de verse igual que un día sin nada planeado';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -892,7 +892,7 @@ let state = {
   iaChats: [], chatActivo: null, iaImagenPendiente: null,
   gastosSesion:'', gastosPass:'', gastosMiembros: [], organizadorSheetId:'',
   calModo:'dia', calFecha: new Date(), calMesSel: null,
-  itinerarioData: null, itinerarioDataFetchedAt: 0
+  itinerarioData: null, itinerarioDataFetchedAt: 0, errorGoogleCalendar: null
 };
 let mapaLeaflet = null, mapaMarkersLayer = null;
 
@@ -1634,6 +1634,14 @@ function loadGoogleTokenFromStorage(){
 function saveGoogleRefreshToken(token){ try{ localStorage.setItem('org_gcal_refresh', token); }catch(e){} }
 function loadGoogleRefreshToken(){ try{ return localStorage.getItem('org_gcal_refresh')||''; }catch(e){ return ''; } }
 let _refrescandoGoogleToken = false;
+// callOrganizador (vía callGAS) avienta un Error con el mensaje real de
+// Google (ej. "Token has been expired or revoked.") en cuanto refreshGoogleToken
+// regresa {ok:false,error:...} — antes ese mensaje se tiraba a la basura en
+// el catch de abajo, así que un token roto de verdad (no un simple hipo de
+// red) se veía IDÉNTICO a "no hay nada planeado hoy": "Sin horario, hábitos
+// ni eventos". Ahora se guarda en state.errorGoogleCalendar para que
+// renderHorarioDesdeOrganizador pueda mostrar el motivo real en vez de
+// adivinar (o volver a adivinar mal).
 async function maybeRefreshGoogleToken(){
   const refreshToken = loadGoogleRefreshToken(); if(!refreshToken || _refrescandoGoogleToken) return false;
   if(!state.conexiones.notas || !state.organizadorSheetId) return false;
@@ -1643,10 +1651,11 @@ async function maybeRefreshGoogleToken(){
     if(data && data.ok){
       googleAccessToken = data.access_token;
       saveGoogleTokenToStorage(data.access_token, data.expires_in);
+      state.errorGoogleCalendar = null;
       return true;
     }
     return false;
-  } catch(e){ return false; }
+  } catch(e){ state.errorGoogleCalendar = e.message || 'No se pudo renovar la conexión con Google Calendar'; return false; }
   finally{ _refrescandoGoogleToken = false; }
 }
 function initGoogleAuth(){
@@ -1663,6 +1672,7 @@ function initGoogleAuth(){
         googleAccessToken = data.access_token;
         saveGoogleTokenToStorage(data.access_token, data.expires_in);
         if(data.refresh_token) saveGoogleRefreshToken(data.refresh_token);
+        state.errorGoogleCalendar = null;
         toast('Google Calendar conectado');
         pintarEstadoGoogleCalendar();
         renderHorarioDesdeOrganizador();
@@ -1671,8 +1681,13 @@ function initGoogleAuth(){
   });
 }
 function pintarEstadoGoogleCalendar(){
-  const conectado = !!(googleAccessToken || loadGoogleRefreshToken());
+  // "conectado" antes solo miraba si HABÍA un refresh token guardado, sin
+  // importar si de verdad seguía sirviendo — un token caducado/revocado por
+  // Google se veía igual de "conectado" que uno sano, así que nunca invitaba
+  // a reconectar aunque las peticiones reales llevaran rato fallando.
+  const conectado = !!(googleAccessToken || loadGoogleRefreshToken()) && !state.errorGoogleCalendar;
   document.getElementById('btn-conectar-gcal').classList.toggle('hidden', conectado);
+  document.getElementById('btn-conectar-gcal').textContent = state.errorGoogleCalendar ? '🗓️ Reconectar Google Calendar' : '🗓️ Conectar Google Calendar';
   document.getElementById('gcal-conectado-txt').classList.toggle('hidden', !conectado);
 }
 document.getElementById('btn-conectar-gcal').addEventListener('click', ()=>{
@@ -1685,13 +1700,15 @@ async function fetchEventosGoogleRango(desde, hasta, _reintento){
   googleAccessToken = googleAccessToken || loadGoogleTokenFromStorage();
   if(!googleAccessToken && !(await maybeRefreshGoogleToken())){
     // Sin refresh token guardado: de verdad no hay Calendar conectado, no
-    // vale la pena reintentar. CON refresh token pero el refresh falló esta
-    // vez, sí puede ser el arranque en frío de Organizador (de donde sale
-    // el refresh) — pasa justo al cargar Hoy, compitiendo con la propia
-    // carga de getAll — así que un solo reintento después de una pausa
-    // corta es lo que hacía que abrir Calendario momentos después sí
-    // funcionara, aquí ya no hace falta esperar a que ella lo note.
-    if(!loadGoogleRefreshToken() || _reintento) return [];
+    // vale la pena reintentar ni marcarlo como error. CON refresh token pero
+    // el refresh falló esta vez, puede ser un hipo transitorio (arranque en
+    // frío de Organizador, de donde sale el refresh) — un reintento corto
+    // basta para eso. Si sigue fallando, maybeRefreshGoogleToken ya dejó el
+    // motivo real en state.errorGoogleCalendar (ej. "Token has been expired
+    // or revoked.") — antes ese mensaje se perdía y quedaba idéntico a
+    // "no hay nada planeado hoy".
+    if(!loadGoogleRefreshToken()){ state.errorGoogleCalendar = null; return []; }
+    if(_reintento) return [];
     await new Promise(r=>setTimeout(r,2500));
     return fetchEventosGoogleRango(desde, hasta, true);
   }
@@ -1702,8 +1719,10 @@ async function fetchEventosGoogleRango(desde, hasta, _reintento){
   }
   if(!res.ok){
     if(!_reintento){ await new Promise(r=>setTimeout(r,2500)); return fetchEventosGoogleRango(desde, hasta, true); }
+    state.errorGoogleCalendar = 'Google Calendar respondió con un error (código '+res.status+') — reconéctalo con el botón de arriba.';
     return [];
   }
+  state.errorGoogleCalendar = null;
   const data = await res.json();
   return (data.items||[]).map(ev=>{
     const inicio = ev.start && ev.start.dateTime ? new Date(ev.start.dateTime) : null;
@@ -1989,7 +2008,12 @@ async function renderHorarioDesdeOrganizador(){
   const cont = document.getElementById('horario-list');
   const items = await construirItemsDelDia(new Date());
   pintarEstadoGoogleCalendar();
-  if(!items.length){ cont.innerHTML = '<div class="empty-row">Sin horario, hábitos ni eventos para hoy en Organizador</div>'; return; }
+  if(!items.length){
+    cont.innerHTML = state.errorGoogleCalendar
+      ? `<div class="empty-row">⚠️ ${escapeHtml(state.errorGoogleCalendar)}</div>`
+      : '<div class="empty-row">Sin horario, hábitos ni eventos para hoy en Organizador</div>';
+    return;
+  }
 
   // Misma vista de dos columnas (Plan | ⏱ Registro) que el Calendario —
   // pedido explícito: "mantener la misma vista de hoy del calendario en
