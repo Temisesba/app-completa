@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v44 (fix: si Google Calendar se desconecta/caduca, "Tu horario de hoy" ahora dice el motivo real y ofrece reconectar, en vez de verse igual que "no hay nada planeado hoy") — GAS v8 -->
+<!-- App Completa — v45 (fix real: "Tu horario de hoy" leía un Sheet de Organizador DISTINTO al que Organizador mismo usa — ahora usa el mismo automáticamente) — GAS v8 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -863,7 +863,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Cuarenta y cuatro — si tu conexión con Google Calendar se cae o caduca, "Tu horario de hoy" ahora te dice el motivo real y te deja reconectar con un botón, en vez de verse igual que un día sin nada planeado';
+const VERSION_TXT = 'Cuarenta y cinco — encontré el motivo real de "Tu horario de hoy" vacío: estaba leyendo un Sheet de Organizador distinto al que tú usas de verdad ahí. Ahora usa automáticamente el mismo Sheet que ya tienes conectado en Organizador';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1364,7 +1364,18 @@ function cargarConexiones(){
   state.gasUrlPropia = localStorage.getItem(LS.gasUrlPropia) || '';
   state.gastosSesion = localStorage.getItem(LS.gastosSesion) || '';
   state.gastosPass = localStorage.getItem(LS.gastosPass) || '';
-  state.organizadorSheetId = localStorage.getItem(LS.organizadorSheetId) || '';
+  // Organizador guarda SU PROPIO Sheet ID en localStorage bajo 'org_sheet_id'
+  // (mismo origen que App_Completa, mismo mecanismo de compartir que ya usan
+  // ac_gastos_sesion/ac_gastos_pass con Gastos) — es el valor de verdad,
+  // siempre al día. El campo de Configuración (ac_organizador_sheet_id) se
+  // copiaba A MANO una sola vez al configurar por primera vez; si en algún
+  // momento no coincidió exactamente con el de Organizador (typo, copiado de
+  // otro Sheet), App_Completa se quedaba leyendo un Sheet distinto — vacío o
+  // ajeno — sin ningún aviso, viéndose como "no tienes horario/hábitos" en
+  // vez de "estás viendo el Sheet equivocado". Ahora se prefiere siempre el
+  // de Organizador; el campo manual queda solo de respaldo por si acaso
+  // Organizador nunca se abrió en este dispositivo.
+  state.organizadorSheetId = localStorage.getItem('org_sheet_id') || localStorage.getItem(LS.organizadorSheetId) || '';
   pintarQuickActions();
   cargarHomeWidgets();
   cargarHorarioTareasRegistro();
@@ -3828,7 +3839,8 @@ function pintarConfigConexiones(){
     <div class="row disabled" style="flex-direction:column; align-items:stretch; gap:6px;">
       <div class="t-sub" style="font-weight:600; color:var(--text);">${c.label}</div>
       <input class="field" style="margin:0;" data-conn="${c.key}" placeholder="https://script.google.com/macros/s/..." value="${escapeHtml(c.key==='self' ? state.gasUrlPropia : (state.conexiones[c.key]||''))}">
-      ${c.key==='notas' ? `<input class="field" style="margin:0;" id="organizador-sheet-id" placeholder="ID de tu Google Sheet de Organizador" value="${escapeHtml(state.organizadorSheetId)}">` : ''}
+      ${c.key==='notas' ? `<input class="field" style="margin:0;" id="organizador-sheet-id" placeholder="ID de tu Google Sheet de Organizador" value="${escapeHtml(state.organizadorSheetId)}">
+      <p class="t-foot" style="margin:0;">Si ya usas Organizador en este dispositivo, este campo se autocompleta solo con el Sheet de verdad — normalmente no hace falta tocarlo.</p>` : ''}
     </div>
   `).join('');
 }
