@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v45 (fix real: "Tu horario de hoy" leía un Sheet de Organizador DISTINTO al que Organizador mismo usa — ahora usa el mismo automáticamente) — GAS v8 -->
+<!-- App Completa — v46 (Viaje: agrega Evento/Festival, y Restaurante/Hospedaje/Evento ya capturan lat/lng con el mapa + sugerencia de IA, igual que Itinerario) — GAS v8 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -756,10 +756,16 @@ textarea.field{resize:vertical; min-height:70px;}
       <button class="chip active" data-viaje-tipo="restaurante">🍽️ Restaurante</button>
       <button class="chip" data-viaje-tipo="transporte">🚗 Transporte</button>
       <button class="chip" data-viaje-tipo="hospedaje">🏨 Hospedaje</button>
+      <button class="chip" data-viaje-tipo="evento">🎪 Evento/Festival</button>
     </div>
 
     <div id="viaje-campos-restaurante" style="margin-top:12px;">
       <input id="vj-r-nombre" class="field" placeholder="Nombre del restaurante">
+      <input type="hidden" id="vj-r-lat"><input type="hidden" id="vj-r-lng">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:2px;">
+        <button class="btn btn-secondary" id="vj-r-elegir-mapa" type="button" style="flex:1;">🗺️ Elegir en el mapa</button>
+      </div>
+      <p class="t-foot" id="vj-r-ubicacion-estado" style="margin:6px 0 12px;">Sin ubicación capturada todavía</p>
       <input id="vj-r-direccion" class="field" placeholder="Dirección (opcional)">
       <div style="display:flex; gap:10px;">
         <input type="date" id="vj-r-fecha" class="field" style="flex:1;">
@@ -774,6 +780,10 @@ textarea.field{resize:vertical; min-height:70px;}
         <option value="si">Reserva: hecha</option>
         <option value="no_requiere">No requiere reserva</option>
       </select>
+      <div style="display:flex; gap:6px; margin-top:8px;">
+        <input id="vj-r-ia-desc" class="field" placeholder="Describe el lugar (ej. el ramen que vimos en video)" style="flex:1; margin:0;">
+        <button class="btn btn-secondary" id="vj-r-ia-sugerir" type="button" style="width:auto;">✨ IA</button>
+      </div>
     </div>
 
     <div id="viaje-campos-transporte" style="margin-top:12px; display:none;">
@@ -804,6 +814,11 @@ textarea.field{resize:vertical; min-height:70px;}
 
     <div id="viaje-campos-hospedaje" style="margin-top:12px; display:none;">
       <input id="vj-h-nombre" class="field" placeholder="Nombre del hotel/hospedaje">
+      <input type="hidden" id="vj-h-lat"><input type="hidden" id="vj-h-lng">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:2px;">
+        <button class="btn btn-secondary" id="vj-h-elegir-mapa" type="button" style="flex:1;">🗺️ Elegir en el mapa</button>
+      </div>
+      <p class="t-foot" id="vj-h-ubicacion-estado" style="margin:6px 0 12px;">Sin ubicación capturada todavía</p>
       <input id="vj-h-direccion" class="field" placeholder="Dirección (opcional)">
       <div style="display:flex; gap:10px;">
         <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Check-in</label><input type="date" id="vj-h-fecha-in" class="field"></div>
@@ -818,6 +833,39 @@ textarea.field{resize:vertical; min-height:70px;}
         <option value="si">Reserva: hecha</option>
         <option value="no_requiere">No requiere reserva</option>
       </select>
+      <div style="display:flex; gap:6px; margin-top:8px;">
+        <input id="vj-h-ia-desc" class="field" placeholder="Describe el hotel (ej. el que vimos en Booking cerca de la estación)" style="flex:1; margin:0;">
+        <button class="btn btn-secondary" id="vj-h-ia-sugerir" type="button" style="width:auto;">✨ IA</button>
+      </div>
+    </div>
+
+    <div id="viaje-campos-evento" style="margin-top:12px; display:none;">
+      <input id="vj-e-nombre" class="field" placeholder="Nombre del evento/festival">
+      <input id="vj-e-categoria" class="field" placeholder="Categoría (ej. Festival, Concierto, Matsuri)">
+      <input type="hidden" id="vj-e-lat"><input type="hidden" id="vj-e-lng">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:2px;">
+        <button class="btn btn-secondary" id="vj-e-elegir-mapa" type="button" style="flex:1;">🗺️ Elegir en el mapa</button>
+      </div>
+      <p class="t-foot" id="vj-e-ubicacion-estado" style="margin:6px 0 12px;">Sin ubicación capturada todavía</p>
+      <input id="vj-e-direccion" class="field" placeholder="Dirección (opcional)">
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Fecha inicio</label><input type="date" id="vj-e-fecha-in" class="field"></div>
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Fecha fin (opcional)</label><input type="date" id="vj-e-fecha-out" class="field"></div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Hora (opcional)</label><input type="time" id="vj-e-hora-inicio" class="field"></div>
+        <div style="flex:1;"><label class="t-caption" style="display:block; margin:8px 0 4px;">Hora fin (opcional)</label><input type="time" id="vj-e-hora-fin" class="field"></div>
+      </div>
+      <textarea id="vj-e-notas" class="field" placeholder="Notas (opcional)"></textarea>
+      <select id="vj-e-reservado" class="field">
+        <option value="pendiente">Boleto: pendiente</option>
+        <option value="si">Boleto: comprado</option>
+        <option value="no_requiere">No requiere boleto</option>
+      </select>
+      <div style="display:flex; gap:6px; margin-top:8px;">
+        <input id="vj-e-ia-desc" class="field" placeholder="Describe el evento (ej. el festival de fuegos artificiales de agosto)" style="flex:1; margin:0;">
+        <button class="btn btn-secondary" id="vj-e-ia-sugerir" type="button" style="width:auto;">✨ IA</button>
+      </div>
     </div>
 
     <div class="modal-actions">
@@ -863,7 +911,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Cuarenta y cinco — encontré el motivo real de "Tu horario de hoy" vacío: estaba leyendo un Sheet de Organizador distinto al que tú usas de verdad ahí. Ahora usa automáticamente el mismo Sheet que ya tienes conectado en Organizador';
+const VERSION_TXT = 'Cuarenta y seis — "🧳 + Viaje" ya tiene Evento/Festival, y Restaurante/Hospedaje/Evento ya te dejan elegir el punto en el mapa o pedirle a la IA que lo ubique, guardando la ubicación exacta igual que en Itinerario';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1790,6 +1838,16 @@ function itemsDeViajeParaFecha(fecha){
     items.push({ tipo:'viaje', id:p.id, hora: p.horaInicio||'', actividad:(p.esRestaurante?'🍽️ ':'📍 ')+(p.nombre||''), obs:p.direccion||'', hecho:!!p.realizado, horaReal:'', logId:null });
   });
   (d.eventos||[]).forEach(ev=>{
+    // Un evento SIN sedes (ej. creado desde App_Completa, que por ahora no
+    // arma sedes — eso sigue siendo cosa de Itinerario) todavía debe verse
+    // en su propio día: se muestra con sus datos generales
+    // (horaInicio/direccionGeneral) en diaIdInicio, más un aviso de fin si
+    // dura más de un día.
+    if(!(ev.sedes||[]).length){
+      if(caeHoy(fechaDeDiaId(ev.diaIdInicio))) items.push({ tipo:'viaje', id:ev.id, hora: ev.horaInicio||'', actividad:'🎪 '+(ev.nombre||''), obs:ev.direccionGeneral||ev.categoria||'', hecho:!!ev.realizado, horaReal:'', logId:null });
+      if(ev.diaIdFin && ev.diaIdFin!==ev.diaIdInicio && caeHoy(fechaDeDiaId(ev.diaIdFin))) items.push({ tipo:'viaje', id:ev.id+'-fin', hora: ev.horaFin||'', actividad:'🎪 Termina: '+(ev.nombre||''), obs:ev.direccionGeneral||'', hecho:false, horaReal:'', logId:null });
+      return;
+    }
     (ev.sedes||[]).forEach(s=>{
       const fecha2 = s.fechaProgramada || fechaDeDiaId(s.diaId) || fechaDeDiaId(ev.diaIdInicio);
       if(!caeHoy(fecha2)) return;
@@ -1843,11 +1901,19 @@ async function refrescarTrasGuardarViaje(){
 }
 function abrirModalViajeNuevo(){
   const hoy = new Date().toISOString().slice(0,10);
-  ['vj-r-fecha','vj-t-fecha','vj-h-fecha-in','vj-h-fecha-out'].forEach(id=> document.getElementById(id).value = hoy);
-  ['vj-r-nombre','vj-r-direccion','vj-r-hora-inicio','vj-r-hora-fin','vj-r-antojo','vj-t-origen','vj-t-destino','vj-t-salida','vj-t-llegada','vj-t-notas','vj-h-nombre','vj-h-direccion','vj-h-hora-in','vj-h-hora-out'].forEach(id=> document.getElementById(id).value='');
+  ['vj-r-fecha','vj-t-fecha','vj-h-fecha-in','vj-h-fecha-out','vj-e-fecha-in'].forEach(id=> document.getElementById(id).value = hoy);
+  ['vj-r-nombre','vj-r-direccion','vj-r-lat','vj-r-lng','vj-r-hora-inicio','vj-r-hora-fin','vj-r-antojo','vj-r-ia-desc',
+   'vj-t-origen','vj-t-destino','vj-t-salida','vj-t-llegada','vj-t-notas',
+   'vj-h-nombre','vj-h-direccion','vj-h-lat','vj-h-lng','vj-h-hora-in','vj-h-hora-out','vj-h-ia-desc',
+   'vj-e-nombre','vj-e-categoria','vj-e-direccion','vj-e-lat','vj-e-lng','vj-e-hora-inicio','vj-e-hora-fin','vj-e-notas','vj-e-ia-desc','vj-e-fecha-out'
+  ].forEach(id=> document.getElementById(id).value='');
+  document.getElementById('vj-r-ubicacion-estado').textContent = 'Sin ubicación capturada todavía';
+  document.getElementById('vj-h-ubicacion-estado').textContent = 'Sin ubicación capturada todavía';
+  document.getElementById('vj-e-ubicacion-estado').textContent = 'Sin ubicación capturada todavía';
   document.getElementById('vj-r-reservado').value='pendiente';
   document.getElementById('vj-t-reservado').value='pendiente';
   document.getElementById('vj-h-reservado').value='pendiente';
+  document.getElementById('vj-e-reservado').value='pendiente';
   document.getElementById('vj-t-tipo').value='Auto';
   seleccionarTipoViaje('restaurante');
   openModal('modal-viaje-nuevo');
@@ -1857,10 +1923,24 @@ function seleccionarTipoViaje(tipo){
   document.getElementById('viaje-campos-restaurante').style.display = tipo==='restaurante' ? '' : 'none';
   document.getElementById('viaje-campos-transporte').style.display = tipo==='transporte' ? '' : 'none';
   document.getElementById('viaje-campos-hospedaje').style.display = tipo==='hospedaje' ? '' : 'none';
+  document.getElementById('viaje-campos-evento').style.display = tipo==='evento' ? '' : 'none';
 }
 document.querySelectorAll('#viaje-tipo-chips [data-viaje-tipo]').forEach(b=> b.addEventListener('click', ()=> seleccionarTipoViaje(b.dataset.viajeTipo)));
 document.getElementById('btn-viaje-nuevo').addEventListener('click', abrirModalViajeNuevo);
 document.getElementById('vj-cancelar').addEventListener('click', ()=> closeModal('modal-viaje-nuevo'));
+// Mapa + IA por sub-formulario (Restaurante/Hospedaje/Evento) — mismo
+// selector/mismo backend de IA que ya usa "Nuevo lugar", solo apuntando a
+// los campos de cada uno vía el `target` que espera abrirMapaPickerPara/
+// sugerirUbicacionIA (ver Fase B, ahora generalizado).
+const VIAJE_TARGET_R = { latId:'vj-r-lat', lngId:'vj-r-lng', direccionId:'vj-r-direccion', estadoId:'vj-r-ubicacion-estado', nombreId:'vj-r-nombre' };
+const VIAJE_TARGET_H = { latId:'vj-h-lat', lngId:'vj-h-lng', direccionId:'vj-h-direccion', estadoId:'vj-h-ubicacion-estado', nombreId:'vj-h-nombre' };
+const VIAJE_TARGET_E = { latId:'vj-e-lat', lngId:'vj-e-lng', direccionId:'vj-e-direccion', estadoId:'vj-e-ubicacion-estado', nombreId:'vj-e-nombre' };
+document.getElementById('vj-r-elegir-mapa').addEventListener('click', ()=> abrirMapaPickerPara(VIAJE_TARGET_R));
+document.getElementById('vj-h-elegir-mapa').addEventListener('click', ()=> abrirMapaPickerPara(VIAJE_TARGET_H));
+document.getElementById('vj-e-elegir-mapa').addEventListener('click', ()=> abrirMapaPickerPara(VIAJE_TARGET_E));
+document.getElementById('vj-r-ia-sugerir').addEventListener('click', function(){ sugerirUbicacionIA('vj-r-ia-desc', VIAJE_TARGET_R, this); });
+document.getElementById('vj-h-ia-sugerir').addEventListener('click', function(){ sugerirUbicacionIA('vj-h-ia-desc', VIAJE_TARGET_H, this); });
+document.getElementById('vj-e-ia-sugerir').addEventListener('click', function(){ sugerirUbicacionIA('vj-e-ia-desc', VIAJE_TARGET_E, this); });
 document.getElementById('vj-guardar').addEventListener('click', async function(){
   const tipo = document.querySelector('#viaje-tipo-chips .chip.active').dataset.viajeTipo;
   const btn = this;
@@ -1874,9 +1954,11 @@ document.getElementById('vj-guardar').addEventListener('click', async function()
       const diaId = await resolverDiaIdParaFecha(fecha);
       await callItinerario('savePendiente', {
         diaId, nombre, direccion: document.getElementById('vj-r-direccion').value.trim(),
+        lat: document.getElementById('vj-r-lat').value, lng: document.getElementById('vj-r-lng').value,
         horaInicio: document.getElementById('vj-r-hora-inicio').value, horaFin: document.getElementById('vj-r-hora-fin').value,
         antojo: document.getElementById('vj-r-antojo').value.trim(), esRestaurante: true,
-        reservado: document.getElementById('vj-r-reservado').value
+        reservado: document.getElementById('vj-r-reservado').value,
+        sugerenciasIA: document.getElementById('vj-r-ia-desc').value.trim()
       });
     } else if(tipo==='transporte'){
       const origen = document.getElementById('vj-t-origen').value.trim(), destino = document.getElementById('vj-t-destino').value.trim();
@@ -1889,7 +1971,7 @@ document.getElementById('vj-guardar').addEventListener('click', async function()
         opciones: [{ salida: document.getElementById('vj-t-salida').value, llegada: document.getElementById('vj-t-llegada').value, notas: document.getElementById('vj-t-notas').value.trim() }],
         opcionElegida: 0, reservado: document.getElementById('vj-t-reservado').value
       });
-    } else {
+    } else if(tipo==='hospedaje'){
       const nombre = document.getElementById('vj-h-nombre').value.trim();
       if(!nombre){ toast('Ponle un nombre al hospedaje'); setBtnState(btn,'idle',{idle:'Guardar'}); return; }
       const fechaIn = document.getElementById('vj-h-fecha-in').value, fechaOut = document.getElementById('vj-h-fecha-out').value;
@@ -1898,8 +1980,25 @@ document.getElementById('vj-guardar').addEventListener('click', async function()
       const diaIdFin = fechaOut ? await resolverDiaIdParaFecha(fechaOut) : diaIdInicio;
       await callItinerario('saveHospedaje', {
         diaIdInicio, diaIdFin, nombre, direccion: document.getElementById('vj-h-direccion').value.trim(),
+        lat: document.getElementById('vj-h-lat').value, lng: document.getElementById('vj-h-lng').value,
         horaCheckIn: document.getElementById('vj-h-hora-in').value, horaCheckOut: document.getElementById('vj-h-hora-out').value,
-        reservado: document.getElementById('vj-h-reservado').value
+        reservado: document.getElementById('vj-h-reservado').value,
+        sugerenciasIA: document.getElementById('vj-h-ia-desc').value.trim()
+      });
+    } else {
+      const nombre = document.getElementById('vj-e-nombre').value.trim();
+      if(!nombre){ toast('Ponle un nombre al evento'); setBtnState(btn,'idle',{idle:'Guardar'}); return; }
+      const fechaIn = document.getElementById('vj-e-fecha-in').value, fechaOut = document.getElementById('vj-e-fecha-out').value;
+      if(!fechaIn){ toast('Elige una fecha'); setBtnState(btn,'idle',{idle:'Guardar'}); return; }
+      const diaIdInicio = await resolverDiaIdParaFecha(fechaIn);
+      const diaIdFin = fechaOut ? await resolverDiaIdParaFecha(fechaOut) : diaIdInicio;
+      await callItinerario('saveEvento', {
+        diaIdInicio, diaIdFin, nombre, categoria: document.getElementById('vj-e-categoria').value.trim(),
+        direccionGeneral: document.getElementById('vj-e-direccion').value.trim(),
+        latGeneral: document.getElementById('vj-e-lat').value, lngGeneral: document.getElementById('vj-e-lng').value,
+        horaInicio: document.getElementById('vj-e-hora-inicio').value, horaFin: document.getElementById('vj-e-hora-fin').value,
+        notas: document.getElementById('vj-e-notas').value.trim(), reservado: document.getElementById('vj-e-reservado').value,
+        sugerenciasIA: document.getElementById('vj-e-ia-desc').value.trim()
       });
     }
     closeModal('modal-viaje-nuevo');
@@ -3108,13 +3207,21 @@ async function reverseGeocodeNominatim(lat, lng){
     return data && data.display_name || '';
   } catch(e){ return ''; }
 }
-document.getElementById('lug-elegir-mapa').addEventListener('click', ()=>{
+// Generalizado (Fase E) para que Restaurante/Hospedaje/Evento del modal de
+// Viaje puedan reusar el MISMO selector de mapa que ya usa "Nuevo lugar" en
+// vez de duplicar el mapa Leaflet por cada formulario — mapaPickerTarget
+// dice en qué inputs escribir lat/lng/dirección/estado; sin target
+// (llamada vieja) se comporta exactamente igual que antes (campos de lug-*).
+const MAPA_PICKER_TARGET_LUGAR = { latId:'lug-lat', lngId:'lug-lng', direccionId:'lug-direccion', estadoId:'lug-ubicacion-estado' };
+let mapaPickerTarget = MAPA_PICKER_TARGET_LUGAR;
+function abrirMapaPickerPara(target){
+  mapaPickerTarget = target || MAPA_PICKER_TARGET_LUGAR;
   openModal('modal-mapa-picker');
   inicializarMapaPickerSiHaceFalta();
   setTimeout(()=>{
     mapaPickerLeaflet.invalidateSize();
-    const latActual = parseFloat(document.getElementById('lug-lat').value);
-    const lngActual = parseFloat(document.getElementById('lug-lng').value);
+    const latActual = parseFloat(document.getElementById(mapaPickerTarget.latId).value);
+    const lngActual = parseFloat(document.getElementById(mapaPickerTarget.lngId).value);
     if(!isNaN(latActual) && !isNaN(lngActual)){
       mapaPickerLeaflet.setView([latActual, lngActual], 16);
       mapaPickerMarker.setLatLng([latActual, lngActual]);
@@ -3124,15 +3231,17 @@ document.getElementById('lug-elegir-mapa').addEventListener('click', ()=>{
       document.getElementById('mapa-picker-direccion-preview').textContent = 'Toca el mapa para elegir un punto';
     }
   }, 50);
-});
+}
+document.getElementById('lug-elegir-mapa').addEventListener('click', ()=> abrirMapaPickerPara(MAPA_PICKER_TARGET_LUGAR));
 document.getElementById('mapa-picker-cancelar').addEventListener('click', ()=> closeModal('modal-mapa-picker'));
 document.getElementById('mapa-picker-usar').addEventListener('click', async ()=>{
   if(!mapaPickerCoords){ toast('Primero toca el mapa para elegir un punto'); return; }
-  document.getElementById('lug-lat').value = mapaPickerCoords.lat;
-  document.getElementById('lug-lng').value = mapaPickerCoords.lng;
-  document.getElementById('lug-ubicacion-estado').textContent = 'Ubicación capturada ✓ ('+mapaPickerCoords.lat.toFixed(4)+', '+mapaPickerCoords.lng.toFixed(4)+')';
+  const t = mapaPickerTarget || MAPA_PICKER_TARGET_LUGAR;
+  document.getElementById(t.latId).value = mapaPickerCoords.lat;
+  document.getElementById(t.lngId).value = mapaPickerCoords.lng;
+  if(t.estadoId) document.getElementById(t.estadoId).textContent = 'Ubicación capturada ✓ ('+mapaPickerCoords.lat.toFixed(4)+', '+mapaPickerCoords.lng.toFixed(4)+')';
   const dir = await reverseGeocodeNominatim(mapaPickerCoords.lat, mapaPickerCoords.lng);
-  if(dir) document.getElementById('lug-direccion').value = dir;
+  if(dir && t.direccionId) document.getElementById(t.direccionId).value = dir;
   closeModal('modal-mapa-picker');
 });
 
@@ -3152,10 +3261,16 @@ async function llamarBackendPropioSinThrow(action, extra){
   const res = await fetch(state.gasUrlPropia, { method:'POST', body:f });
   return res.json();
 }
-document.getElementById('lug-ia-sugerir').addEventListener('click', async function(){
-  const descripcion = document.getElementById('lug-ia-desc').value.trim();
+// Generalizado (Fase E) — mismo mecanismo Gemini→Claude-con-permiso, ahora
+// reusable por Restaurante/Hospedaje/Evento del modal de Viaje. `target`
+// dice en qué inputs escribir cada campo (nombreId/direccionId/latId/lngId/
+// estadoId/tipoSelectId, todos opcionales — solo se toca el campo cuya id
+// exista en el target Y venga en la respuesta de la IA); sin target se
+// comporta igual que antes (campos de "Nuevo lugar").
+async function sugerirUbicacionIA(descripcionId, target, btn){
+  target = target || Object.assign({nombreId:'lug-nombre', tipoSelectId:'lug-tipo'}, MAPA_PICKER_TARGET_LUGAR);
+  const descripcion = document.getElementById(descripcionId).value.trim();
   if(!descripcion){ toast('Describe el lugar primero'); return; }
-  const btn = this;
   setBtnState(btn, 'saving', {saving:'…'});
   const zona = Intl.DateTimeFormat().resolvedOptions().timeZone;
   try{
@@ -3166,29 +3281,31 @@ document.getElementById('lug-ia-sugerir').addEventListener('click', async functi
         setBtnState(btn, 'saving', {saving:'…'});
         try{
           const res2 = await llamarBackendPropioSinThrow('iaSugerirUbicacionClaude', { descripcion, zona });
-          if(res2.ok) aplicarSugerenciaUbicacionIA(res2.data); else toast('Claude también falló: '+(res2.error||''));
+          if(res2.ok) aplicarSugerenciaUbicacionIA(res2.data, target); else toast('Claude también falló: '+(res2.error||''));
         } catch(e){ toast('Error: '+e.message); }
         setBtnState(btn, 'idle', {idle:'✨ IA'});
       });
       return;
     }
-    aplicarSugerenciaUbicacionIA(res.data);
+    aplicarSugerenciaUbicacionIA(res.data, target);
   } catch(e){ toast('Error: '+e.message); }
   setBtnState(btn, 'idle', {idle:'✨ IA'});
-});
-function aplicarSugerenciaUbicacionIA(d){
+}
+document.getElementById('lug-ia-sugerir').addEventListener('click', function(){ sugerirUbicacionIA('lug-ia-desc', null, this); });
+function aplicarSugerenciaUbicacionIA(d, target){
+  target = target || Object.assign({nombreId:'lug-nombre', tipoSelectId:'lug-tipo'}, MAPA_PICKER_TARGET_LUGAR);
   if(!d) return;
-  if(d.nombre) document.getElementById('lug-nombre').value = d.nombre;
-  if(d.categoria){
-    const sel = document.getElementById('lug-tipo');
-    const existe = Array.from(sel.options).some(o=>o.value.toLowerCase()===d.categoria.toLowerCase());
-    if(existe) sel.value = Array.from(sel.options).find(o=>o.value.toLowerCase()===d.categoria.toLowerCase()).value;
+  if(d.nombre && target.nombreId) document.getElementById(target.nombreId).value = d.nombre;
+  if(d.categoria && target.tipoSelectId){
+    const sel = document.getElementById(target.tipoSelectId);
+    const opt = Array.from(sel.options).find(o=>o.value.toLowerCase()===d.categoria.toLowerCase());
+    if(opt) sel.value = opt.value;
   }
-  if(d.direccion) document.getElementById('lug-direccion').value = d.direccion;
-  if(d.lat!=null && d.lng!=null){
-    document.getElementById('lug-lat').value = d.lat;
-    document.getElementById('lug-lng').value = d.lng;
-    document.getElementById('lug-ubicacion-estado').textContent = 'Ubicación capturada ✓ ('+parseFloat(d.lat).toFixed(4)+', '+parseFloat(d.lng).toFixed(4)+')';
+  if(d.direccion && target.direccionId) document.getElementById(target.direccionId).value = d.direccion;
+  if(d.lat!=null && d.lng!=null && target.latId && target.lngId){
+    document.getElementById(target.latId).value = d.lat;
+    document.getElementById(target.lngId).value = d.lng;
+    if(target.estadoId) document.getElementById(target.estadoId).textContent = 'Ubicación capturada ✓ ('+parseFloat(d.lat).toFixed(4)+', '+parseFloat(d.lng).toFixed(4)+')';
   }
   toast('Sugerencia de la IA aplicada — revísala antes de guardar');
 }
