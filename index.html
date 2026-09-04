@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v48 (nuevo widget "Calorías" en Resumen de hoy: llevas/te quedan + carbos/proteína/grasas, mismas fórmulas que Comidas) — GAS v8 -->
+<!-- App Completa — v49 (Calorías ahora es desplegable con los 7 macros completos — Grasas/Sat/Carbos/Azúcar/Fibra/Proteína/Sal — y cuánto falta o sobra de cada uno) — GAS v8 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -917,7 +917,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Cuarenta y ocho — nuevo widget "Calorías" en Resumen de hoy: cuánto llevas, cuánto te queda de tu meta diaria, y cuánto de eso es carbohidratos/proteína/grasas — mismas fórmulas que ya usa Comidas';
+const VERSION_TXT = 'Cuarenta y nueve — "Calorías" ahora se despliega y muestra los 7 macros completos (Grasas, Grasas saturadas, Carbohidratos, Azúcares, Fibra, Proteína, Sal), cada uno con cuánto te falta o cuánto te pasaste, igual que en Comidas';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1443,8 +1443,6 @@ async function cargarHomeWidgets(){
 
   // Comida de hoy (Comidas → CALENDARIO + RECETAS)
   piezas.push(construirWidgetComida());
-  // Calorías de hoy (Comidas → NUTRICION_LOG/EJERCICIO_LOG/USUARIOS)
-  piezas.push(construirWidgetCalorias());
   // Acuerdos pendientes (Acuerdos → ACUERDOS)
   piezas.push(construirWidgetAcuerdos());
   // Últimas notas (Notas → getIdeas)
@@ -1517,25 +1515,49 @@ async function construirWidgetComida(){
 // 'comidas_usuario_id' (mismo origen, mismo patrón que org_sheet_id) — sin
 // ese valor cae al primer usuario no papelera (caso de un solo usuario,
 // que es lo normal aquí).
-async function construirWidgetCalorias(){
-  if(!state.conexiones.comidas) return null; // el widget de "Comida de hoy" ya cubre el aviso de "conecta Comidas"
-  const d = await obtenerComidasData();
-  if(!d) return null;
-  const usuarios = (d.usuarios||[]).filter(u=>!esVerdadero(u.Papelera));
-  const miId = localStorage.getItem('comidas_usuario_id') || (usuarios[0] && usuarios[0].ID) || '';
-  const usuario = usuarios.find(u=>u.ID===miId);
-  const meta = Number(usuario && usuario.MetaCalorias) || 0;
-  if(!meta) return { icon:'🔥', color:'var(--comidas)', titulo:'Calorías', sub:'Configura tu meta diaria en Comidas → tu perfil', accion:()=>irApp('comidas') };
-  const hoy = hoyISO();
-  const nutriHoy = (d.nutricion_log||[]).filter(r=>r.Usuario===miId && r.Fecha===hoy && !esVerdadero(r.Papelera) && esVerdadero(r.Realizado));
-  const consumido = nutriHoy.reduce((s,r)=>s+(Number(r.Energia)||0),0);
-  const quemado = (d.ejercicio_log||[]).filter(r=>r.Usuario===miId && r.Fecha===hoy && !esVerdadero(r.Papelera)).reduce((s,r)=>s+(Number(r.CaloriasQuemadas)||0),0);
-  const restante = meta - consumido + quemado;
-  const macro = (campo)=> nutriHoy.reduce((s,r)=>s+(Number(r[campo])||0),0);
-  const titulo = restante>=0 ? `Te quedan ${Math.round(restante)} kcal hoy` : `⚠️ Pasado por ${Math.round(-restante)} kcal`;
-  const sub = `${Math.round(consumido)} / ${meta} kcal`+(quemado?` (+${Math.round(quemado)} ejercicio)`:'')+
-    ` · Carbos ${Math.round(macro('Carbohidratos'))}g · Proteína ${Math.round(macro('Proteina'))}g · Grasas ${Math.round(macro('Grasas'))}g`;
-  return { icon:'🔥', color:'var(--comidas)', titulo, sub, accion:()=>irApp('comidas') };
+// Desglose completo de macros — pedido explícito de ver, junto a cada uno,
+// "cuánto falta o me sobra". red1/metasMacrosDiarias/el formato de cada
+// fila son EXACTAMENTE los de Comidas (red1/metasMacrosDiarias/
+// filaMacroDashboard en comidas.html) — mismo reparto de macros a partir de
+// la meta de kcal (50% carbos/20% proteína/30% grasas, etc.) y mismo texto
+// "faltan Xg"/"⚠️ pasado por Xg", para no calcular ni redactar esto dos
+// veces de formas distintas.
+function red1(n){ return Math.round((Number(n)||0)*10)/10; }
+function metasMacrosDiarias(meta){
+  meta = Number(meta)||0;
+  if(!meta) return null;
+  return { Carbohidratos:(meta*0.50)/4, Proteina:(meta*0.20)/4, Grasas:(meta*0.30)/9, GrasasSaturadas:(meta*0.10)/9, Fibra:(meta/1000)*14, Azucares:(meta*0.05)/4, Sal:5 };
+}
+function filaMacroDashboardHtml(etiqueta, consumido, meta){
+  if(!meta) return `<div class="row disabled"><div class="body"><div class="main">${etiqueta}</div><div class="sub">${red1(consumido)}g consumidos hoy</div></div></div>`;
+  const restante = meta - consumido, excedido = restante < 0;
+  return `<div class="row disabled"><div class="body"><div class="main">${etiqueta}</div><div class="sub" style="${excedido?'color:var(--red);':''}">${red1(consumido)} / ${red1(meta)}g · ${excedido?'⚠️ pasado por '+red1(-restante)+'g':'faltan '+red1(restante)+'g'}</div></div></div>`;
+}
+async function construirColapsableCalorias(){
+  const badge = document.getElementById('badge-calorias'), body = document.getElementById('body-calorias');
+  if(!state.conexiones.comidas){ badge.textContent='—'; body.innerHTML = '<div class="empty-row">Conecta Comidas en Configuración</div>'; return; }
+  try{
+    const d = await obtenerComidasData();
+    const usuarios = ((d && d.usuarios) || []).filter(u=>!esVerdadero(u.Papelera));
+    const miId = localStorage.getItem('comidas_usuario_id') || (usuarios[0] && usuarios[0].ID) || '';
+    const usuario = usuarios.find(u=>u.ID===miId);
+    const meta = Number(usuario && usuario.MetaCalorias) || 0;
+    if(!meta){ badge.textContent='—'; body.innerHTML = '<div class="empty-row">Configura tu meta diaria en Comidas → tu perfil</div>'; return; }
+    const hoy = hoyISO();
+    const nutriHoy = ((d && d.nutricion_log) || []).filter(r=>r.Usuario===miId && r.Fecha===hoy && !esVerdadero(r.Papelera) && esVerdadero(r.Realizado));
+    const consumido = nutriHoy.reduce((s,r)=>s+(Number(r.Energia)||0),0);
+    const quemado = ((d && d.ejercicio_log) || []).filter(r=>r.Usuario===miId && r.Fecha===hoy && !esVerdadero(r.Papelera)).reduce((s,r)=>s+(Number(r.CaloriasQuemadas)||0),0);
+    const restante = meta - consumido + quemado;
+    const macro = (campo)=> nutriHoy.reduce((s,r)=>s+(Number(r[campo])||0),0);
+    const metas = metasMacrosDiarias(meta);
+    badge.textContent = Math.round(restante)+' kcal';
+    const filaCalorias = `<div class="row disabled"><div class="body"><div class="main">Calorías</div><div class="sub" style="${restante<0?'color:var(--red);':''}">${Math.round(consumido)} / ${meta} kcal`+(quemado?` (+${Math.round(quemado)} ejercicio)`:'')+` · ${restante<0?'⚠️ pasado por '+Math.round(-restante)+' kcal':'te quedan '+Math.round(restante)+' kcal'}</div></div></div>`;
+    const filasMacros = [
+      ['Grasas','Grasas'], ['GrasasSaturadas','Grasas saturadas'], ['Carbohidratos','Carbohidratos'],
+      ['Azucares','Azúcares'], ['Fibra','Fibra'], ['Proteina','Proteína'], ['Sal','Sal']
+    ].map(([campo,etiqueta])=>filaMacroDashboardHtml(etiqueta, macro(campo), metas?metas[campo]:0)).join('');
+    body.innerHTML = filaCalorias + filasMacros;
+  } catch(e){ badge.textContent='!'; body.innerHTML = '<div class="empty-row">No se pudo leer</div>'; }
 }
 
 async function construirWidgetBiblia(){
@@ -1601,6 +1623,7 @@ async function construirWidgetNotas(){
 async function pintarColapsables(){
   const cont = document.getElementById('home-collapsibles');
   const secciones = [
+    { id:'calorias', titulo:'Calorías', builder:construirColapsableCalorias },
     { id:'compras', titulo:'Lista de compras', builder:construirColapsableCompras },
     { id:'outfit', titulo:'Outfit de hoy', builder:construirColapsableOutfit },
     { id:'closet', titulo:'Inventario / Closet', builder:construirColapsableCloset },
