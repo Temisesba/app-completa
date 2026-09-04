@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v47 ("Outfit de hoy" ahora muestra el maniquí vestido con tus prendas de hoy, reusando las imágenes ya generadas en Ropa) — GAS v8 -->
+<!-- App Completa — v48 (nuevo widget "Calorías" en Resumen de hoy: llevas/te quedan + carbos/proteína/grasas, mismas fórmulas que Comidas) — GAS v8 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -917,7 +917,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Cuarenta y siete — "Outfit de hoy" ahora muestra el maniquí vestido con lo que traes puesto, usando las mismas fotos generadas que ya tienes en Ropa (si nunca abriste el Vestidor en este dispositivo, se queda solo con la lista)';
+const VERSION_TXT = 'Cuarenta y ocho — nuevo widget "Calorías" en Resumen de hoy: cuánto llevas, cuánto te queda de tu meta diaria, y cuánto de eso es carbohidratos/proteína/grasas — mismas fórmulas que ya usa Comidas';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -946,7 +946,8 @@ let state = {
   iaChats: [], chatActivo: null, iaImagenPendiente: null,
   gastosSesion:'', gastosPass:'', gastosMiembros: [], organizadorSheetId:'',
   calModo:'dia', calFecha: new Date(), calMesSel: null,
-  itinerarioData: null, itinerarioDataFetchedAt: 0, errorGoogleCalendar: null
+  itinerarioData: null, itinerarioDataFetchedAt: 0, errorGoogleCalendar: null,
+  comidasData: null, comidasDataFetchedAt: 0
 };
 let mapaLeaflet = null, mapaMarkersLayer = null;
 
@@ -1442,6 +1443,8 @@ async function cargarHomeWidgets(){
 
   // Comida de hoy (Comidas → CALENDARIO + RECETAS)
   piezas.push(construirWidgetComida());
+  // Calorías de hoy (Comidas → NUTRICION_LOG/EJERCICIO_LOG/USUARIOS)
+  piezas.push(construirWidgetCalorias());
   // Acuerdos pendientes (Acuerdos → ACUERDOS)
   piezas.push(construirWidgetAcuerdos());
   // Últimas notas (Notas → getIdeas)
@@ -1469,12 +1472,33 @@ async function cargarHomeWidgets(){
   pintarColapsables();
 }
 
-async function construirWidgetComida(){
+// Comidas es OTRO backend independiente (Apps Script propio) — igual que
+// pasaba con Organizador (ver obtenerOrganizadorData), dos widgets de Home
+// pidiéndole cada uno su propio getAll al mismo tiempo duplica trabajo y
+// puede alargar el arranque en frío sin necesidad. Un solo fetch
+// compartido/cacheado (CAL_CACHE_MS) para Comida de hoy y Calorías.
+let _comidasFetchEnCurso = null;
+async function obtenerComidasData(){
   const url = state.conexiones.comidas;
-  if(!url) return { icon:'🍽️', color:'var(--comidas)', titulo:'Comida de hoy', sub:'Conecta Comidas en Configuración', accion:()=>irAVista('config') };
-  const data = await callGAS(url, 'getAll');
-  const cal = (data.data && data.data.calendario) || [];
-  const recetas = (data.data && data.data.recetas) || [];
+  if(!url) return null;
+  const yaCargado = state.comidasData && (Date.now()-(state.comidasDataFetchedAt||0)) < CAL_CACHE_MS;
+  if(yaCargado) return state.comidasData;
+  if(_comidasFetchEnCurso) return _comidasFetchEnCurso;
+  _comidasFetchEnCurso = (async ()=>{
+    try{
+      const data = await callGAS(url, 'getAll');
+      state.comidasData = data.data;
+      state.comidasDataFetchedAt = Date.now();
+      return state.comidasData;
+    } finally { _comidasFetchEnCurso = null; }
+  })();
+  return _comidasFetchEnCurso;
+}
+async function construirWidgetComida(){
+  if(!state.conexiones.comidas) return { icon:'🍽️', color:'var(--comidas)', titulo:'Comida de hoy', sub:'Conecta Comidas en Configuración', accion:()=>irAVista('config') };
+  const d = await obtenerComidasData();
+  const cal = (d && d.calendario) || [];
+  const recetas = (d && d.recetas) || [];
   const hoy = hoyISO();
   const deHoy = cal.filter(c => c.Fecha === hoy && !esVerdadero(c.Papelera));
   if(!deHoy.length) return { icon:'🍽️', color:'var(--comidas)', titulo:'Comida de hoy', sub:'Nada planeado todavía', accion:()=>irApp('comidas') };
@@ -1484,6 +1508,34 @@ async function construirWidgetComida(){
     return r ? r.Nombre : c.Slot;
   }).filter(Boolean);
   return { icon:'🍽️', color:'var(--comidas)', titulo:'Comida de hoy', sub: nombres.join(' · ') || (deHoy.length+' planeado(s)'), accion:()=>irApp('comidas') };
+}
+// Calorías de hoy — mismas fórmulas EXACTAS que ya usa Comidas mismo
+// (caloriasRealizadasParaFecha/macrosRealizadosParaFecha en comidas.html):
+// solo lo Realizado (no lo planeado a futuro) cuenta para "llevas/te
+// quedan", el ejercicio del día se SUMA a favor (kcal quemadas), y el
+// usuario activo se identifica igual que Comidas — mismo localStorage
+// 'comidas_usuario_id' (mismo origen, mismo patrón que org_sheet_id) — sin
+// ese valor cae al primer usuario no papelera (caso de un solo usuario,
+// que es lo normal aquí).
+async function construirWidgetCalorias(){
+  if(!state.conexiones.comidas) return null; // el widget de "Comida de hoy" ya cubre el aviso de "conecta Comidas"
+  const d = await obtenerComidasData();
+  if(!d) return null;
+  const usuarios = (d.usuarios||[]).filter(u=>!esVerdadero(u.Papelera));
+  const miId = localStorage.getItem('comidas_usuario_id') || (usuarios[0] && usuarios[0].ID) || '';
+  const usuario = usuarios.find(u=>u.ID===miId);
+  const meta = Number(usuario && usuario.MetaCalorias) || 0;
+  if(!meta) return { icon:'🔥', color:'var(--comidas)', titulo:'Calorías', sub:'Configura tu meta diaria en Comidas → tu perfil', accion:()=>irApp('comidas') };
+  const hoy = hoyISO();
+  const nutriHoy = (d.nutricion_log||[]).filter(r=>r.Usuario===miId && r.Fecha===hoy && !esVerdadero(r.Papelera) && esVerdadero(r.Realizado));
+  const consumido = nutriHoy.reduce((s,r)=>s+(Number(r.Energia)||0),0);
+  const quemado = (d.ejercicio_log||[]).filter(r=>r.Usuario===miId && r.Fecha===hoy && !esVerdadero(r.Papelera)).reduce((s,r)=>s+(Number(r.CaloriasQuemadas)||0),0);
+  const restante = meta - consumido + quemado;
+  const macro = (campo)=> nutriHoy.reduce((s,r)=>s+(Number(r[campo])||0),0);
+  const titulo = restante>=0 ? `Te quedan ${Math.round(restante)} kcal hoy` : `⚠️ Pasado por ${Math.round(-restante)} kcal`;
+  const sub = `${Math.round(consumido)} / ${meta} kcal`+(quemado?` (+${Math.round(quemado)} ejercicio)`:'')+
+    ` · Carbos ${Math.round(macro('Carbohidratos'))}g · Proteína ${Math.round(macro('Proteina'))}g · Grasas ${Math.round(macro('Grasas'))}g`;
+  return { icon:'🔥', color:'var(--comidas)', titulo, sub, accion:()=>irApp('comidas') };
 }
 
 async function construirWidgetBiblia(){
