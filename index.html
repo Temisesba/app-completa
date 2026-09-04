@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<!-- App Completa — v46 (Viaje: agrega Evento/Festival, y Restaurante/Hospedaje/Evento ya capturan lat/lng con el mapa + sugerencia de IA, igual que Itinerario) — GAS v8 -->
+<!-- App Completa — v47 ("Outfit de hoy" ahora muestra el maniquí vestido con tus prendas de hoy, reusando las imágenes ya generadas en Ropa) — GAS v8 -->
 <style>
 :root{
   --bg:#f2f2f7; --bg-elev:#ffffff; --bg-grouped:#ffffff;
@@ -162,6 +162,12 @@ header.topbar .user-chip .av{width:26px; height:26px; border-radius:50%; backgro
 .cal-item.viaje{border-left-color:#e08a3c; background:#fdf1e3;}
 .cal-item.viaje .hora{color:#e08a3c;}
 @media (prefers-color-scheme: dark){ .cal-item.viaje{background:#3a2c1c;} }
+/* Maniquí vestido en "Outfit de hoy" — mismas clases/proporción que usa
+   Ropa (maniqui-doll-wrap/base/capa-full en ropa.html) para que la imagen
+   se vea igual aquí que allá, layereando la base + cada prenda encima. */
+.maniqui-doll-wrap{position:relative; max-width:200px; aspect-ratio:9/16; margin:4px auto 12px; background:var(--bg-elev,#f4f4f7); border-radius:var(--radius-lg); box-shadow:var(--shadow); overflow:hidden;}
+.maniqui-doll-base{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; z-index:0;}
+.maniqui-doll-capa-full{position:absolute; inset:0; width:100%; height:100%; object-fit:contain;}
 .cal-reg-item{position:absolute; left:4px; right:4px; background:var(--accent-soft2,#efedfb); border-left:3px solid var(--general); border-radius:6px; padding:3px 6px; overflow:hidden;}
 .cal-reg-item .hora{font-size:9px; font-weight:700; color:var(--general);}
 .cal-reg-item .titulo{font-size:11px; font-weight:500; line-height:1.15;}
@@ -911,7 +917,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Cuarenta y seis — "🧳 + Viaje" ya tiene Evento/Festival, y Restaurante/Hospedaje/Evento ya te dejan elegir el punto en el mapa o pedirle a la IA que lo ubique, guardando la ubicación exacta igual que en Itinerario';
+const VERSION_TXT = 'Cuarenta y siete — "Outfit de hoy" ahora muestra el maniquí vestido con lo que traes puesto, usando las mismas fotos generadas que ya tienes en Ropa (si nunca abriste el Vestidor en este dispositivo, se queda solo con la lista)';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1593,7 +1599,30 @@ async function construirColapsableOutfit(){
     const ids = [...new Set(usosHoy.flatMap(u=>{ try{ return JSON.parse(u.PrendaIDsJSON||'[]'); }catch(e){ return []; } }))];
     badge.textContent = ids.length;
     const nombres = ids.map(id=>{ const p = prendas.find(x=>x.ID===id); return p ? [p.Tipo,p.Color].filter(Boolean).join(' ') : null; }).filter(Boolean);
-    body.innerHTML = nombres.length ? nombres.map(n=>`<div class="row disabled"><div class="ic" style="background:var(--ropa);">👕</div><div class="body"><div class="main">${escapeHtml(n)}</div></div></div>`).join('') : '<div class="empty-row">Sin outfit registrado hoy</div>';
+    const listaHtml = nombres.length ? nombres.map(n=>`<div class="row disabled"><div class="ic" style="background:var(--ropa);">👕</div><div class="body"><div class="main">${escapeHtml(n)}</div></div></div>`).join('') : '<div class="empty-row">Sin outfit registrado hoy</div>';
+    // Maniquí vestido — pedido explícito ("se vea la imagen del maniquí
+    // vestido"), reusando lo que Ropa ya genera con IA en vez de generar
+    // nada nuevo aquí: el maniquí base y la "capa" de cada prenda vestida
+    // ya se generan y se cachean/suben en Ropa (Vestidor), bajo llaves de
+    // localStorage del MISMO origen (temisesba.github.io) — mismo patrón
+    // de compartir que org_sheet_id/gastos_myname. Si nunca se abrió el
+    // Vestidor en este dispositivo no hay nada cacheado: se omite el
+    // maniquí y se deja solo la lista (nunca se intenta generar uno nuevo
+    // desde aquí, eso sigue siendo cosa de Ropa).
+    let maniquiHtml = '';
+    try{
+      const genero = localStorage.getItem('ropa_maniqui_genero') || 'mujer';
+      const estatura = localStorage.getItem('ropa_maniqui_estatura') || 'chaparrita';
+      const baseCache = JSON.parse(localStorage.getItem('ropa_maniqui_compartido_2026-08-23d_'+genero+'_'+estatura) || 'null');
+      if(baseCache && baseCache.url){
+        const peinadoId = localStorage.getItem('ropa_maniqui_peinado') || 'ninguno';
+        const peinado = peinadoId!=='ninguno' ? prendas.find(p=>p.ID===peinadoId) : null;
+        const peloHtml = peinado && !esVerdadero(peinado.Papelera) && peinado.FotoGeneradaURL ? `<img class="maniqui-doll-capa-full" src="${peinado.FotoGeneradaURL}">` : '';
+        const capasHtml = ids.map(id=>{ const p = prendas.find(x=>x.ID===id); return p && p.FotoGeneradaURL ? `<img class="maniqui-doll-capa-full" src="${p.FotoGeneradaURL}">` : ''; }).join('');
+        maniquiHtml = `<div class="maniqui-doll-wrap"><img class="maniqui-doll-base" src="${baseCache.url}">${peloHtml}${capasHtml}</div>`;
+      }
+    } catch(e){ /* sin maniquí cacheado — se omite, la lista de texto ya cubre lo esencial */ }
+    body.innerHTML = maniquiHtml + listaHtml;
   } catch(e){ badge.textContent='!'; body.innerHTML = '<div class="empty-row">No se pudo leer</div>'; }
 }
 async function construirColapsableCloset(){
