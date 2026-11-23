@@ -263,6 +263,24 @@ textarea.field{resize:vertical; min-height:70px;}
 }
 #toast.on{opacity:1; transform:translateX(-50%) translateY(0);}
 
+
+/* ---------- Inventario por carpetas ---------- */
+.inv-foto-wrap{position:relative; display:inline-block; max-width:100%; border-radius:12px; overflow:hidden; box-shadow:var(--shadow); line-height:0; vertical-align:top;}
+.inv-foto-wrap img{display:block; max-width:100%; max-height:46vh; width:auto; height:auto;}
+#invc-foto-box{text-align:center;}
+#invc-foto-wrap{cursor:crosshair;}
+.inv-flecha{position:absolute; width:40px; height:54px; transform:translate(-50%,-100%); pointer-events:none;
+  background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 58'%3E%3Cpath d='M15 2h14v30h12L22 56 3 32h12z' fill='%23ff3b30' stroke='white' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E");
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.5)); animation:invFlechaBota 1.2s ease-in-out infinite;}
+@keyframes invFlechaBota{0%,100%{margin-top:0} 50%{margin-top:-6px}}
+.inv-thumb{width:30px; height:30px; border-radius:8px; object-fit:cover; flex-shrink:0;}
+.inv-bc{display:flex; flex-wrap:wrap; align-items:center; gap:4px; font-size:14px; margin:0 4px 10px; color:var(--text-soft);}
+.inv-bc a{color:var(--general); font-weight:600; cursor:pointer; text-decoration:none;}
+.inv-carpeta-card{background:var(--bg-elev); border-radius:var(--radius-lg); box-shadow:var(--shadow); padding:12px; margin-bottom:14px;}
+.inv-carpeta-card .desc{font-size:14px; color:var(--text-soft); margin:8px 2px; white-space:pre-wrap;}
+.inv-carpeta-card .acciones{display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;}
+.inv-mini-btn{border:none; background:var(--separator-op); color:var(--text); border-radius:8px; padding:6px 10px; font-size:13px; cursor:pointer; flex-shrink:0;}
+
 /* ---------- Mapa ---------- */
 .chip-row{display:flex; gap:8px; overflow-x:auto; padding:2px 2px 12px; -webkit-overflow-scrolling:touch;}
 .chip-row::-webkit-scrollbar{display:none;}
@@ -401,9 +419,17 @@ textarea.field{resize:vertical; min-height:70px;}
 
       <!-- ---------- INVENTARIO GENERAL ---------- -->
       <section class="view" id="view-inventario">
-        <div class="section-title t-caption">Inventario general</div>
-        <p class="t-sub" style="padding:0 4px 12px;">Tus cosas que no son comida ni ropa — muebles, electrónica, herramientas… Cada ítem puede llevar su precio.</p>
-        <button class="btn btn-primary" id="btn-inv-nuevo" style="margin-bottom:14px;">+ Agregar objeto</button>
+        <div class="section-title t-caption">Inventario</div>
+        <p class="t-sub" style="padding:0 4px 12px;">Todo lo de la casa en un solo lugar: 🥫 Alacena (llega solo de tus compras en Gastos), 👕 Ropa (del Closet) y 📦 General. Las carpetas son los lugares donde guardas las cosas.</p>
+        <div style="display:flex; gap:8px; margin-bottom:10px;">
+          <button class="btn btn-primary btn-sm" id="btn-inv-nuevo" style="flex:1;">+ Objeto</button>
+          <button class="btn btn-secondary btn-sm" id="btn-inv-carpeta-nueva" style="flex:1;">📁 Carpeta</button>
+          <button class="btn btn-secondary btn-sm" id="btn-inv-ia" style="flex:1.4;">✨ ¿Dónde lo guardo?</button>
+        </div>
+        <input id="inv-buscar" class="field" type="search" placeholder="🔎 Buscar en todo el inventario…" autocomplete="off">
+        <div class="chip-row" id="inv-grupo-chips"></div>
+        <div class="chip-row" id="inv-modo-chips"></div>
+        <div id="inv-carpeta-header"></div>
         <div class="grouped" id="inv-list"></div>
       </section>
 
@@ -568,10 +594,12 @@ textarea.field{resize:vertical; min-height:70px;}
     <input type="hidden" id="inv-id">
     <div style="margin-top:14px;">
       <input id="inv-nombre" class="field" placeholder="Nombre (ej. Silla de escritorio)">
+      <select id="inv-grupo" class="field"><option value="General">📦 General</option><option value="Alacena">🥫 Alacena</option></select>
+      <div class="t-foot" id="inv-grupo-txt" style="margin:-2px 4px 8px;"></div>
       <select id="inv-categoria" class="field"></select>
       <textarea id="inv-caracteristicas" class="field" placeholder="Características (color, marca, estado, dónde está...)"></textarea>
       <div style="display:flex; gap:8px;">
-        <input id="inv-cantidad" class="field" type="number" min="1" placeholder="Cant." value="1" style="width:56px; flex-shrink:0;">
+        <input id="inv-cantidad" class="field" type="number" min="0" step="any" placeholder="Cant." value="1" title="Cantidad (cuántos tienes)" style="width:64px; flex-shrink:0;">
         <input id="inv-precio" class="field" type="number" min="0" step="0.01" placeholder="Precio" style="flex:1; min-width:0;">
         <select id="inv-precio-moneda" class="field" style="width:80px; flex-shrink:0;"><option>MXN</option><option>JPY</option><option>USD</option></select>
       </div>
@@ -581,19 +609,111 @@ textarea.field{resize:vertical; min-height:70px;}
       </div>
       <input id="inv-tienda" class="field" list="inv-tiendas-datalist" placeholder="Tienda (ej. Amazon, Temu...)" autocomplete="off">
       <datalist id="inv-tiendas-datalist"></datalist>
-      <input id="inv-ubicacion" class="field" list="inv-ubicaciones-datalist" placeholder="Ubicación / Lugar (ej. Recámara)" autocomplete="off">
-      <datalist id="inv-ubicaciones-datalist"></datalist>
+      <div class="t-foot" style="margin:2px 4px 4px;">📁 ¿En qué carpeta está?</div>
+      <div style="display:flex; gap:6px;">
+        <select id="inv-ubicacion" class="field" style="flex:1; min-width:0;"></select>
+        <button type="button" class="btn btn-secondary" style="width:auto;" id="inv-btn-sugerir" title="Que la IA sugiera dónde (con el nombre y/o la foto)">✨</button>
+      </div>
       <div class="foto-preview hidden" id="inv-foto-preview">
         <img id="inv-foto-img" src="" alt="">
         <button type="button" class="btn btn-text btn-sm" id="inv-foto-quitar">Quitar foto</button>
       </div>
       <button type="button" class="btn btn-secondary" id="inv-btn-foto" style="margin-top:2px;">📷 Agregar foto</button>
       <input type="file" id="inv-foto-input" accept="image/*" class="hidden">
+      <div id="inv-uso-box" class="hidden" style="margin-top:12px; padding:10px 12px; border-radius:12px; background:var(--separator-op);">
+        <div class="t-sub" id="inv-uso-txt"></div>
+        <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-secondary btn-sm" id="inv-btn-lo-use">✋ Lo usé hoy</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="inv-btn-salida">🕊 Ya no lo tengo</button>
+          <button type="button" class="btn btn-secondary btn-sm hidden" id="inv-btn-regresar">↩ Regresarlo</button>
+        </div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="inv-cancelar">Cancelar</button>
       <button class="btn btn-primary" id="inv-guardar">Guardar</button>
     </div>
+    <button type="button" class="btn btn-text btn-sm hidden" id="inv-btn-borrar" style="color:var(--red); margin-top:6px;">🗑 Borrar (fue un error, no lo quiero en el historial)</button>
+  </div>
+</div>
+
+
+<!-- ============ MODAL carpeta de inventario (nueva / editar) ============ -->
+<div class="modal-overlay" id="modal-inv-carpeta">
+  <div class="modal modal-wrap">
+    <button class="close-x" data-close-modal="modal-inv-carpeta">✕</button>
+    <h2 class="t-title" id="modal-inv-carpeta-titulo">Nueva carpeta</h2>
+    <input type="hidden" id="invc-path-original">
+    <div style="margin-top:14px;">
+      <div id="invc-padre-box">
+        <div class="t-foot" style="margin:0 4px 4px;">Dentro de:</div>
+        <select id="invc-padre" class="field"></select>
+      </div>
+      <input id="invc-nombre" class="field" placeholder="Nombre (ej. Alacena, Cajón 2, Clóset recámara)">
+      <div class="t-foot" style="margin:2px 4px 4px;">¿Qué va aquí? (le sirve a la IA para sugerir dónde guardar cosas nuevas)</div>
+      <textarea id="invc-desc" class="field" placeholder='ej. "papelería, herramientas chicas, pilas"'></textarea>
+      <button type="button" class="btn btn-text btn-sm" id="invc-desc-borrar">Borrar descripción</button>
+      <div class="t-foot" style="margin:10px 4px 6px;">Foto del lugar — toca la foto para poner una flecha en el espacio exacto</div>
+      <div id="invc-foto-box" class="hidden">
+        <div class="inv-foto-wrap" id="invc-foto-wrap"><img id="invc-foto-img" src="" alt=""><div class="inv-flecha hidden" id="invc-flecha"></div></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
+          <button type="button" class="btn btn-text btn-sm" id="invc-flecha-quitar">Quitar flecha</button>
+          <button type="button" class="btn btn-text btn-sm" id="invc-foto-quitar">Quitar foto</button>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary btn-sm" id="invc-btn-foto">📷 Poner foto</button>
+        <button type="button" class="btn btn-secondary btn-sm hidden" id="invc-btn-foto-padre">⬆ Usar la foto de la carpeta de arriba</button>
+      </div>
+      <input type="file" id="invc-foto-input" accept="image/*" class="hidden">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" data-close-modal="modal-inv-carpeta">Cancelar</button>
+      <button class="btn btn-primary" id="invc-guardar">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL elegir carpeta (mover) ============ -->
+<div class="modal-overlay" id="modal-inv-elegir">
+  <div class="modal modal-wrap">
+    <button class="close-x" data-close-modal="modal-inv-elegir">✕</button>
+    <h2 class="t-title" id="inv-elegir-titulo">Mover a…</h2>
+    <p class="t-sub" id="inv-elegir-sub" style="margin-top:6px;"></p>
+    <div class="grouped" id="inv-elegir-list" style="margin-top:12px; max-height:55vh; overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- ============ MODAL pedir texto (ej. ¿por qué lo sacas?) ============ -->
+<div class="modal-overlay" id="modal-inv-texto">
+  <div class="modal modal-wrap">
+    <h2 class="t-title" id="inv-texto-titulo"></h2>
+    <p class="t-sub" id="inv-texto-sub" style="margin-top:6px;"></p>
+    <textarea id="inv-texto-input" class="field" style="margin-top:10px;"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="inv-texto-cancelar">Cancelar</button>
+      <button class="btn btn-primary" id="inv-texto-ok">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL ✨ ¿Dónde lo guardo? ============ -->
+<div class="modal-overlay" id="modal-inv-ia">
+  <div class="modal modal-wrap">
+    <button class="close-x" data-close-modal="modal-inv-ia">✕</button>
+    <h2 class="t-title">✨ ¿Dónde lo guardo?</h2>
+    <p class="t-sub" style="margin-top:6px;">Escribe qué es y/o ponle una foto. La IA te sugiere la carpeta usando lo que describiste de cada una — tú decides si lo guardas ahí.</p>
+    <input id="invia-nombre" class="field" style="margin-top:10px;" placeholder="ej. tijeras, cargador viejo, cobija de lana">
+    <div class="foto-preview hidden" id="invia-foto-preview">
+      <img id="invia-foto-img" src="" alt="">
+      <button type="button" class="btn btn-text btn-sm" id="invia-foto-quitar">Quitar foto</button>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button type="button" class="btn btn-secondary" id="invia-btn-foto" style="flex:1;">📷 Foto</button>
+      <button type="button" class="btn btn-primary" id="invia-sugerir" style="flex:1;">✨ Sugerir</button>
+    </div>
+    <input type="file" id="invia-foto-input" accept="image/*" class="hidden">
+    <div id="invia-resultado" class="hidden" style="margin-top:14px; padding:12px; border-radius:12px; background:var(--separator-op);"></div>
   </div>
 </div>
 
@@ -917,7 +1037,7 @@ textarea.field{resize:vertical; min-height:70px;}
 /* ============================================================
    1. CONFIGURACIÓN GENERAL
    ============================================================ */
-const VERSION_TXT = 'Cuarenta y nueve — "Calorías" ahora se despliega y muestra los 7 macros completos (Grasas, Grasas saturadas, Carbohidratos, Azúcares, Fibra, Proteína, Sal), cada uno con cuánto te falta o cuánto te pasaste, igual que en Comidas';
+const VERSION_TXT = 'Cincuenta — Inventario por carpetas: se ve todo junto (Alacena, Ropa y General), mover carpetas dentro de otras, descripción y foto con flecha por carpeta, ✨ la IA sugiere dónde guardar algo (por nombre o foto), "Sin usar 6+ meses" y "Ya no están" con el motivo';
 const APP_TITLE = 'App Completa';
 
 // URLs reales de cada app (GitHub Pages) para la navegación completa.
@@ -1366,7 +1486,7 @@ function irAVista(id){
   document.querySelectorAll('.nav-item, .tab-item').forEach(b=>{
     b.classList.toggle('active', b.dataset.navId === id || (id==='mas' && b.dataset.navId==='mas'));
   });
-  const titulos = { hoy:'Hoy', mas:'Más', inventario:'Inventario general', mapa:'Mapa', calendario:'Calendario', config:'Configuración' };
+  const titulos = { hoy:'Hoy', mas:'Más', inventario:'Inventario', mapa:'Mapa', calendario:'Calendario', config:'Configuración' };
   document.getElementById('topbar-title').textContent = titulos[id] || 'Hoy';
   document.getElementById('views').scrollTop = 0;
   if(id==='config'){ pintarConfigTodo(); }
@@ -1711,7 +1831,7 @@ async function construirColapsableCloset(){
       filas.push({ label:'Prendas en tu closet', n: prendas.length, accion:()=>irApp('ropa') });
     } catch(e){ filas.push({ label:'Closet', n:'!', accion:()=>irApp('ropa') }); }
   }
-  filas.push({ label:'Objetos en Inventario general', n: state.inventario.filter(i=>!esVerdadero(i.Papelera)).length, accion:()=>irAVista('inventario') });
+  filas.push({ label:'Objetos en Inventario', n: state.inventario.filter(i=>!esVerdadero(i.Papelera) && !invEsSalida(i)).length, accion:()=>irAVista('inventario') });
   badge.textContent = filas.reduce((a,f)=> a + (typeof f.n==='number'?f.n:0), 0);
   body.innerHTML = filas.map(f=>`<div class="row" data-goto="1"><div class="ic" style="background:var(--general);">📦</div><div class="body"><div class="main">${f.label}</div></div><span class="chev">${f.n}</span></div>`).join('');
   Array.from(body.children).forEach((el,i)=> el.addEventListener('click', filas[i].accion));
@@ -2912,105 +3032,618 @@ async function asegurarBackendPropio(action, extra){
   return callGAS(state.gasUrlPropia, action, extra);
 }
 
-// Inventario General ya no tiene su propio backend — vive en Gastos
-// (su "📦 Inventario" real, filas con Grupo='General'), para que sea el
-// mismo lugar donde también se ve Alacena y Ropa. Se adapta la forma de
-// cada fila de Gastos (concepto/categoria/precioInd/...) a la forma vieja
-// (Nombre/Categoria/Precio/...) que ya usan renderInventarioList y
-// abrirModalInventario, para tocar lo menos posible de esas dos.
+// ============================================================
+// Inventario por carpetas (v50). Los objetos viven en Gastos (su "📦
+// Inventario" real): Alacena llega sola de las compras, Ropa llega
+// sincronizada desde el Closet y General se crea aquí. Aquí se ve TODO junto.
+//
+// Una "carpeta" NO es una fila propia de Gastos: es el prefijo del campo
+// Ubicacion de cada objeto, con "/" para subcarpetas (ej. "Alacena/Cajón 2").
+// Mover/renombrar/eliminar una carpeta = reescribir ese prefijo en cada
+// objeto afectado — nunca se pierde un objeto, solo cambia de lugar.
+// Lo EXTRA de cada carpeta (qué va ahí, foto del lugar, flecha) vive en el
+// backend propio (tabla CARPETAS_INVENTARIO), igual que el "último uso" y
+// los datos de salida de cada objeto (INVENTARIO_META).
+// ============================================================
+const INV_SALIDA = 'Ya no están';
+const INV_SIN_CARPETA = '__sin__';
+const INV_GRUPOS = [{id:'',label:'Todo',emoji:'🗂'},{id:'Alacena',label:'Alacena',emoji:'🥫'},{id:'Ropa',label:'Ropa',emoji:'👕'},{id:'General',label:'General',emoji:'📦'}];
+const INV_EMOJI_GRUPO = { Alacena:'🥫', Ropa:'👕', General:'📦' };
+const INV_DIAS_SIN_USO = 182; // ~6 meses
+let invRuta = '', invGrupo = '', invModo = 'carpetas', invBusqueda = '';
+state.invCarpetas = []; state.invMeta = {}; state.invCategoriasTodas = [];
+
+function invNormTxt(s){ return String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); }
+function invNormPath(p){ return String(p==null?'':p).split('/').map(x=>x.trim()).filter(Boolean).join('/'); }
+function invBajo(ubi, path){ return ubi===path || ubi.indexOf(path+'/')===0; }
+function invEsSalida(i){ return invBajo(invNormPath(i.Ubicacion), INV_SALIDA); }
+function invRutaBonita(p){ return p ? p.split('/').join(' › ') : 'Sin carpeta'; }
+// Llave estable para INVENTARIO_META: el externoId si lo tiene (General/Ropa),
+// si no fecha+nombre (rowIndex de Gastos cambia si se borra una fila arriba).
+function invKey(g){ return g.externoId ? ('x:'+g.externoId) : ('c:'+String(g.fecha||'').slice(0,10)+'|'+String(g.concepto||'').trim()); }
+
 function adaptarFilaGastosAInventario(g){
+  const grupo = g.grupo || 'Alacena';
+  // En compras de Gastos, "Piezas" es cuántos compraste (ej. 12 rollos de
+  // papel) y "Cantidad"+"Unidad" es el tamaño de cada uno (500 g). Para
+  // Inventario lo que importa es cuántos tienes → piezas si existe.
+  const usaPiezas = grupo!=='General' && String(g.piezas==null?'':g.piezas)!=='';
   return {
-    ID: g.externoId, rowIndex: g.rowIndex,
-    Nombre: g.concepto, Categoria: g.categoria, Caracteristicas: g.notas||'',
-    Cantidad: parseInt(g.cantidad)||1, Precio: g.precioInd, PrecioMoneda: g.precioMoneda||'MXN',
-    Codigo: g.codigo, Ubicacion: g.ubicacion, Tienda: g.tienda||'', FotoURL: g.fotoProducto, Papelera:false
+    ID: invKey(g), key: invKey(g), rowIndex: g.rowIndex,
+    externoId: String(g.externoId||''), externoOrigen: String(g.externoOrigen||''), grupo,
+    Nombre: String(g.concepto==null?'':g.concepto), Categoria: String(g.categoria||''), Caracteristicas: String(g.notas||''),
+    Cantidad: String((usaPiezas ? g.piezas : g.cantidad) ?? ''), campoCantidad: usaPiezas ? 'piezas' : 'cantidad',
+    Unidad: (!usaPiezas && g.unidad && g.unidad!=='unidad') ? String(g.unidad) : '',
+    Precio: g.precioInd, PrecioMoneda: g.precioMoneda||'MXN',
+    Codigo: String(g.codigo||''), Ubicacion: invNormPath(g.ubicacion), Tienda: String(g.tienda||''), FotoURL: String(g.fotoProducto||''),
+    Fecha: String(g.fecha||'').slice(0,10), Papelera:false
   };
 }
+// Mismo criterio que el "📦 Inventario" de Gastos (v30InvData): solo filas de
+// producto que sí van a inventario, que no son cotización y que no están
+// consumidas (Queda=0).
+function filtrarFilasInventario(gastos){
+  const padresCot = new Set(gastos.filter(e=>e.tipoFila!=='producto' && e.gastoId && (e.compartido==='Cotizacion' || e.quien_paga==='Cotizacion')).map(e=>e.gastoId));
+  return gastos.filter(g=> g.tipoFila==='producto'
+    && String(g.inventario||'SI')!=='NA'
+    && g.compartido!=='Cotizacion'
+    && !(padresCot.has(g.compraId) && g.compartido!=='Comprado')
+    && String(g.queda==null?'':g.queda)!=='0');
+}
+
 async function pintarInventario(){
   const cont = document.getElementById('inv-list');
   if(!state.conexiones.gastos || !state.gastosSesion){
+    document.getElementById('inv-carpeta-header').innerHTML = '';
     cont.innerHTML = '<div class="empty-row">Conecta Gastos en Configuración → Conexiones (URL + sesión) para usar el Inventario.</div>';
     return;
   }
-  cont.innerHTML = '<div class="empty-row">Cargando…</div>';
+  if(!state.inventario.length) cont.innerHTML = '<div class="empty-row">Cargando…</div>';
   try{
-    const [data, cats] = await Promise.all([
+    const [data, cats, propio] = await Promise.all([
       callGAS(state.conexiones.gastos, 'getGastos', { sesion: state.gastosSesion, pass: state.gastosPass }),
-      callGAS(state.conexiones.gastos, 'getCategoriasInv', {})
+      callGAS(state.conexiones.gastos, 'getCategoriasInv', {}).catch(()=>({categorias:[]})),
+      state.gasUrlPropia ? asegurarBackendPropio('getAll').catch(e=>{ console.warn('Inventario: backend propio', e); return null; }) : Promise.resolve(null)
     ]);
-    state.inventario = (data.gastos||[]).filter(g=>g.tipoFila==='producto' && g.grupo==='General').map(adaptarFilaGastosAInventario);
-    state.categoriasInventario = (cats.categorias||[]).filter(c=>!esVerdadero(c.Papelera) && c.Grupo==='General');
-    renderInventarioList();
+    state.inventario = filtrarFilasInventario(data.gastos||[]).map(adaptarFilaGastosAInventario);
+    state.invCategoriasTodas = (cats.categorias||[]).filter(c=>!esVerdadero(c.Papelera));
+    state.categoriasInventario = state.invCategoriasTodas.filter(c=>c.Grupo==='General');
+    if(propio && propio.data){
+      state.invCarpetas = (propio.data.carpetas_inventario||[]).map(c=>Object.assign({}, c, { Path: invNormPath(c.Path) }));
+      state.invMeta = {};
+      (propio.data.inventario_meta||[]).forEach(m=>{ state.invMeta[String(m.ID)] = m; });
+    }
+    renderInventario();
   } catch(e){ cont.innerHTML = `<div class="empty-row">No se pudo cargar: ${escapeHtml(e.message==='PASSWORD'?'contraseña de Gastos incorrecta':e.message)}</div>`; }
 }
-function renderInventarioList(){
+
+function invTodasLasCarpetas(){
+  const set = new Set();
+  const add = (ubi)=>{ ubi = invNormPath(ubi); if(!ubi) return; let acc=''; ubi.split('/').forEach(p=>{ acc = acc ? acc+'/'+p : p; set.add(acc); }); };
+  state.inventario.forEach(i=>{ if(!invEsSalida(i)) add(i.Ubicacion); });
+  state.invCarpetas.forEach(c=> add(c.Path));
+  return Array.from(set).filter(p=>!invBajo(p, INV_SALIDA)).sort((a,b)=>a.localeCompare(b,'es'));
+}
+function invMetaCarpeta(path){ return state.invCarpetas.find(c=>c.Path===path) || null; }
+function invItemsFiltrados(){ return state.inventario.filter(i=>!invGrupo || i.grupo===invGrupo); }
+function invUltimoUso(i){ const m = state.invMeta[i.key]; return String((m && m.UltimoUso) || i.Fecha || ''); }
+function invHaceCuanto(fecha){
+  const d = new Date(fecha+'T12:00:00'); if(isNaN(d)) return '';
+  const dias = Math.floor((Date.now()-d.getTime())/864e5);
+  if(dias < 1) return 'hoy';
+  if(dias < 45) return 'hace '+dias+' día'+(dias===1?'':'s');
+  const meses = Math.round(dias/30.4);
+  if(meses < 18) return 'hace '+meses+' meses';
+  return 'hace '+(dias/365).toFixed(1).replace('.0','')+' años';
+}
+// "Sin usar en 6 meses": último uso marcado (✋ Lo usé), o si nunca se marcó,
+// desde que entró al inventario. Alacena (comida) solo cuenta si se filtra
+// a propósito por Alacena — en "Todo" sería puro ruido de despensa.
+function invSinUsar(){
+  const limite = Date.now() - INV_DIAS_SIN_USO*864e5;
+  return invItemsFiltrados()
+    .filter(i=>!invEsSalida(i) && (invGrupo || i.grupo!=='Alacena'))
+    .filter(i=>{ const f = invUltimoUso(i); if(!f) return false; const d = new Date(f+'T12:00:00'); return !isNaN(d) && d.getTime() < limite; })
+    .sort((a,b)=> invUltimoUso(a).localeCompare(invUltimoUso(b)));
+}
+function invSalidas(){ return invItemsFiltrados().filter(invEsSalida); }
+
+function renderInventario(){
+  renderInvChips();
+  const header = document.getElementById('inv-carpeta-header');
   const cont = document.getElementById('inv-list');
-  if(!state.inventario.length){ cont.innerHTML = '<div class="empty-row">Sin objetos todavía — agrega el primero arriba</div>'; return; }
-  cont.innerHTML = state.inventario.map(i=>`
-    <div class="row" data-id="${i.ID}">
-      ${i.FotoURL ? `<img src="${i.FotoURL}" style="width:30px;height:30px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : `<div class="ic" style="background:var(--general);">📦</div>`}
-      <div class="body"><div class="main">${escapeHtml(i.Nombre)} ${i.Cantidad>1?('× '+i.Cantidad):''}</div>
-      <div class="sub">${escapeHtml(i.Categoria||'')}${i.Precio?(' · '+money(i.Precio)+(i.PrecioMoneda&&i.PrecioMoneda!=='MXN'?' '+i.PrecioMoneda:'')):''}${i.Tienda?(' · '+escapeHtml(i.Tienda)):''}${i.Ubicacion?(' · '+escapeHtml(i.Ubicacion)):''}${i.Codigo?(' · #'+escapeHtml(i.Codigo)):''}</div></div>
-      <button class="icon-btn" data-del="${i.ID}">🗑</button>
-    </div>
-  `).join('');
-  cont.querySelectorAll('.row[data-id]').forEach(r=>{
-    r.addEventListener('click', (e)=>{ if(e.target.closest('[data-del]')) return; abrirModalInventario(r.dataset.id); });
+  const q = invNormTxt(invBusqueda.trim());
+  if(q){
+    header.innerHTML = `<div class="inv-bc">Buscando "${escapeHtml(invBusqueda.trim())}" en todo el inventario</div>`;
+    const res = invItemsFiltrados().filter(i=> invNormTxt([i.Nombre,i.Ubicacion,i.Caracteristicas,i.Codigo,i.Categoria,i.Tienda].join(' ')).includes(q));
+    cont.innerHTML = res.length ? res.map(i=>invFilaObjeto(i, {conRuta:true})).join('') : '<div class="empty-row">Sin resultados</div>';
+    invBindFilas(cont); return;
+  }
+  if(invModo==='sinuso'){
+    header.innerHTML = `<p class="t-sub" style="padding:0 4px 10px;">Cosas que no has usado en 6 meses o más (desde la última vez que tocaste ✋ "Lo usé", o desde que las agregaste). Si de verdad no las usas, sácalas con 🕊 — no se borran, se van a "Ya no están" con el motivo.${invGrupo?'':' (En "Todo" no se incluye Alacena.)'}</p>`;
+    const lista = invSinUsar();
+    cont.innerHTML = lista.length ? lista.map(i=>invFilaObjeto(i, {conRuta:true, sinUso:true})).join('') : '<div class="empty-row">Nada lleva 6 meses sin usarse 🎉</div>';
+    invBindFilas(cont); return;
+  }
+  if(invModo==='salida'){
+    header.innerHTML = `<p class="t-sub" style="padding:0 4px 10px;">Lo que tuviste y ya no está — regalado, vendido, roto, tirado… Se queda aquí de recuerdo, con el motivo en sus notas. Puedes regresarlo con ↩ si vuelve.</p>`;
+    const lista = invSalidas().sort((a,b)=>{ const fa=(state.invMeta[a.key]||{}).FechaSalida||'', fb=(state.invMeta[b.key]||{}).FechaSalida||''; return fb.localeCompare(fa); });
+    cont.innerHTML = lista.length ? lista.map(i=>invFilaObjeto(i, {salida:true})).join('') : '<div class="empty-row">Todavía no has sacado nada</div>';
+    invBindFilas(cont); return;
+  }
+  renderInvCarpetas(header, cont);
+}
+
+function renderInvChips(){
+  const g = document.getElementById('inv-grupo-chips');
+  g.innerHTML = INV_GRUPOS.map(x=>{
+    const n = x.id ? state.inventario.filter(i=>i.grupo===x.id && !invEsSalida(i)).length : state.inventario.filter(i=>!invEsSalida(i)).length;
+    return `<button class="chip ${invGrupo===x.id?'active':''}" data-grupo="${x.id}">${x.emoji} ${x.label} <span style="opacity:.7">${n}</span></button>`;
+  }).join('');
+  g.querySelectorAll('[data-grupo]').forEach(b=> b.addEventListener('click', ()=>{ invGrupo = b.dataset.grupo; renderInventario(); }));
+  const m = document.getElementById('inv-modo-chips');
+  const modos = [
+    { id:'carpetas', label:'📁 Carpetas' },
+    { id:'sinuso', label:'⏳ Sin usar 6+ meses', n: invSinUsar().length },
+    { id:'salida', label:'🕊 Ya no están', n: invSalidas().length }
+  ];
+  m.innerHTML = modos.map(x=>`<button class="chip ${invModo===x.id?'active':''}" data-modo="${x.id}">${x.label}${x.n!=null?(' <span style="opacity:.7">'+x.n+'</span>'):''}</button>`).join('');
+  m.querySelectorAll('[data-modo]').forEach(b=> b.addEventListener('click', ()=>{ invModo = b.dataset.modo; renderInventario(); }));
+}
+
+function invFotoConFlechaHtml(url, x, y){
+  const hayFlecha = x!=='' && x!=null && y!=='' && y!=null && !isNaN(parseFloat(x));
+  return `<div style="text-align:center;"><div class="inv-foto-wrap"><img src="${escapeHtml(url)}" alt="">${hayFlecha?`<div class="inv-flecha" style="left:${parseFloat(x)}%; top:${parseFloat(y)}%;"></div>`:''}</div></div>`;
+}
+
+function renderInvCarpetas(header, cont){
+  const ruta = invRuta;
+  const items = invItemsFiltrados().filter(i=>!invEsSalida(i));
+  // Migas de pan
+  let bc = `<div class="inv-bc"><a data-bc="">🏠 Inventario</a>`;
+  if(ruta===INV_SIN_CARPETA) bc += ` › <span>📥 Sin carpeta</span>`;
+  else if(ruta){ const partes = ruta.split('/'); partes.forEach((p,idx)=>{ bc += ` › <a data-bc="${escapeHtml(partes.slice(0,idx+1).join('/'))}">${escapeHtml(p)}</a>`; }); }
+  bc += `</div>`;
+  let card = '';
+  if(ruta && ruta!==INV_SIN_CARPETA){
+    const meta = invMetaCarpeta(ruta) || {};
+    card = `<div class="inv-carpeta-card">
+      ${meta.FotoURL ? invFotoConFlechaHtml(meta.FotoURL, meta.FlechaX, meta.FlechaY) : ''}
+      <div class="desc">${meta.Descripcion ? ('📝 '+escapeHtml(meta.Descripcion)) : '<span style="opacity:.7">Sin descripción de qué va aquí — agrégala con ✏️ (ayuda a la IA a sugerir).</span>'}</div>
+      <div class="acciones">
+        <button class="inv-mini-btn" id="invc-act-editar">✏️ Editar (nombre, qué va, foto)</button>
+        <button class="inv-mini-btn" id="invc-act-mover">📦 Mover carpeta</button>
+        <button class="inv-mini-btn" id="invc-act-eliminar" style="color:var(--red);">🗑 Eliminar carpeta</button>
+      </div>
+    </div>`;
+  }
+  header.innerHTML = bc + card;
+  header.querySelectorAll('[data-bc]').forEach(a=> a.addEventListener('click', ()=>{ invRuta = a.dataset.bc; renderInventario(); }));
+  if(card){
+    document.getElementById('invc-act-editar').addEventListener('click', ()=> abrirModalCarpetaInv(ruta));
+    document.getElementById('invc-act-mover').addEventListener('click', ()=> invAbrirMoverCarpeta(ruta));
+    document.getElementById('invc-act-eliminar').addEventListener('click', ()=> invEliminarCarpeta(ruta));
+  }
+
+  if(ruta===INV_SIN_CARPETA){
+    const sin = items.filter(i=>!i.Ubicacion);
+    cont.innerHTML = sin.length ? sin.map(i=>invFilaObjeto(i,{})).join('') : '<div class="empty-row">Todo tiene carpeta 🎉</div>';
+    invBindFilas(cont); return;
+  }
+  const subs = {}; const aqui = [];
+  items.forEach(i=>{
+    const u = i.Ubicacion;
+    if(ruta){
+      if(u===ruta){ aqui.push(i); return; }
+      if(u.indexOf(ruta+'/')===0){ const s = u.slice(ruta.length+1).split('/')[0]; subs[s] = (subs[s]||0)+1; }
+    } else if(u){ const s = u.split('/')[0]; subs[s] = (subs[s]||0)+1; }
   });
-  cont.querySelectorAll('[data-del]').forEach(b=>{
-    b.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      const item = state.inventario.find(x=>x.ID===b.dataset.del);
-      pedirConfirmacion('¿Eliminar "' + item.Nombre + '"?', 'Se manda a la papelera de Gastos (Eliminados), se puede recuperar desde ahí.', async ()=>{
-        try{
-          await callGAS(state.conexiones.gastos, 'deleteGasto', { rowIndex: item.rowIndex, soloFila:true, eliminadoPor: (state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre||'' });
-          toast('Eliminado');
-          pintarInventario();
-        } catch(e){ toast('Error: '+e.message); }
-      });
+  // Carpetas vacías (creadas a mano, o sin objetos de este grupo): solo se
+  // muestran sin filtro de grupo, para no llenar "Ropa" de carpetas de comida.
+  if(!invGrupo){
+    invTodasLasCarpetas().forEach(p=>{
+      if(ruta){ if(p.indexOf(ruta+'/')===0){ const s = p.slice(ruta.length+1).split('/')[0]; if(!(s in subs)) subs[s]=0; } }
+      else { const s = p.split('/')[0]; if(!(s in subs)) subs[s]=0; }
     });
+  }
+  const nombres = Object.keys(subs).sort((a,b)=>a.localeCompare(b,'es'));
+  let html = nombres.map(n=>{
+    const path = ruta ? ruta+'/'+n : n;
+    const meta = invMetaCarpeta(path) || {};
+    const thumb = meta.FotoURL ? `<img class="inv-thumb" src="${escapeHtml(meta.FotoURL)}" loading="lazy" alt="">` : `<div class="ic" style="background:var(--gastos);">📁</div>`;
+    return `<div class="row" data-carpeta="${escapeHtml(n)}">${thumb}<div class="body"><div class="main">${escapeHtml(n)}</div>${meta.Descripcion?`<div class="sub">${escapeHtml(meta.Descripcion)}</div>`:''}</div><span class="chev">${subs[n]} ›</span></div>`;
+  }).join('');
+  if(!ruta){
+    const nSin = items.filter(i=>!i.Ubicacion).length;
+    if(nSin) html += `<div class="row" data-sincarpeta="1"><div class="ic" style="background:var(--text-faint);">📥</div><div class="body"><div class="main">Sin carpeta</div><div class="sub">Cosas que todavía no tienen lugar asignado</div></div><span class="chev">${nSin} ›</span></div>`;
+  }
+  html += aqui.map(i=>invFilaObjeto(i,{})).join('');
+  cont.innerHTML = html || '<div class="empty-row">Vacío — agrega un objeto o una carpeta arriba</div>';
+  cont.querySelectorAll('[data-carpeta]').forEach(r=> r.addEventListener('click', ()=>{ invRuta = ruta ? ruta+'/'+r.dataset.carpeta : r.dataset.carpeta; renderInventario(); window.scrollTo(0,0); }));
+  const rs = cont.querySelector('[data-sincarpeta]'); if(rs) rs.addEventListener('click', ()=>{ invRuta = INV_SIN_CARPETA; renderInventario(); });
+  invBindFilas(cont);
+}
+
+function invFilaObjeto(i, op){
+  const thumb = i.FotoURL ? `<img class="inv-thumb" src="${escapeHtml(i.FotoURL)}" loading="lazy" alt="">` : `<div class="ic" style="background:var(--general);">${INV_EMOJI_GRUPO[i.grupo]||'📦'}</div>`;
+  const cant = (i.Cantidad!=='' && i.Cantidad!=null) ? ` <span style="color:var(--text-soft); font-weight:400;">× ${escapeHtml(i.Cantidad)}${i.Unidad?(' '+escapeHtml(i.Unidad)):''}</span>` : '';
+  const partes = [];
+  if(op.conRuta) partes.push('📁 '+invRutaBonita(i.Ubicacion));
+  partes.push((INV_EMOJI_GRUPO[i.grupo]||'')+' '+i.grupo);
+  if(i.Categoria) partes.push(i.Categoria);
+  let extra = '', botones = '';
+  if(op.sinUso){
+    const f = invUltimoUso(i);
+    const marcado = !!(state.invMeta[i.key] && state.invMeta[i.key].UltimoUso);
+    extra = `<div class="sub">${marcado?'Último uso':'Desde que lo agregaste'}: ${escapeHtml(f)} (${invHaceCuanto(f)})</div>`;
+    botones = `<button class="icon-btn" data-uso="${i.rowIndex}" title="Lo usé hoy">✋</button><button class="icon-btn" data-sacar="${i.rowIndex}" title="Ya no lo tengo">🕊</button>`;
+  }
+  if(op.salida){
+    const m = state.invMeta[i.key] || {};
+    extra = `<div class="sub">${m.FechaSalida?('Salió '+escapeHtml(m.FechaSalida)):''}${m.UbicacionAnterior?(' · estaba en '+escapeHtml(invRutaBonita(m.UbicacionAnterior))):''}${m.MotivoSalida?(' · '+escapeHtml(m.MotivoSalida)):''}</div>`;
+    botones = `<button class="icon-btn" data-regresar="${i.rowIndex}" title="Regresarlo">↩</button>`;
+  }
+  return `<div class="row" data-row="${i.rowIndex}">${thumb}<div class="body"><div class="main">${escapeHtml(i.Nombre||'(sin nombre)')}${cant}</div><div class="sub">${escapeHtml(partes.join(' · '))}</div>${extra}</div>${botones}</div>`;
+}
+function invItemPorRow(r){ return state.inventario.find(x=>String(x.rowIndex)===String(r)); }
+function invBindFilas(cont){
+  cont.querySelectorAll('[data-row]').forEach(r=> r.addEventListener('click', (e)=>{ if(e.target.closest('button')) return; abrirModalInventario(r.dataset.row); }));
+  cont.querySelectorAll('[data-uso]').forEach(b=> b.addEventListener('click', async (e)=>{ e.stopPropagation(); const it = invItemPorRow(b.dataset.uso); if(it) await invMarcarUso(it); }));
+  cont.querySelectorAll('[data-sacar]').forEach(b=> b.addEventListener('click', async (e)=>{ e.stopPropagation(); const it = invItemPorRow(b.dataset.sacar); if(it) await invSacarObjeto(it); }));
+  cont.querySelectorAll('[data-regresar]').forEach(b=> b.addEventListener('click', async (e)=>{ e.stopPropagation(); const it = invItemPorRow(b.dataset.regresar); if(it) await invRegresarObjeto(it); }));
+}
+document.getElementById('inv-buscar').addEventListener('input', function(){ invBusqueda = this.value; renderInventario(); });
+
+/* ---- helpers de diálogos que regresan promesa ---- */
+function invPedirTexto(titulo, sub, valor, placeholder){
+  return new Promise(resolve=>{
+    document.getElementById('inv-texto-titulo').textContent = titulo;
+    document.getElementById('inv-texto-sub').textContent = sub || '';
+    const inp = document.getElementById('inv-texto-input');
+    inp.value = valor || ''; inp.placeholder = placeholder || '';
+    const ok = document.getElementById('inv-texto-ok'), no = document.getElementById('inv-texto-cancelar');
+    const limpiar = ()=>{ ok.onclick = null; no.onclick = null; closeModal('modal-inv-texto'); };
+    ok.onclick = ()=>{ const v = inp.value.trim(); limpiar(); resolve(v); };
+    no.onclick = ()=>{ limpiar(); resolve(null); };
+    openModal('modal-inv-texto');
+    setTimeout(()=>inp.focus(), 60);
+  });
+}
+function invConfirmar(titulo, cuerpo){
+  return new Promise(resolve=>{
+    const no = document.getElementById('confirm-cancelar');
+    const h = ()=>{ no.removeEventListener('click', h); resolve(false); };
+    no.addEventListener('click', h);
+    pedirConfirmacion(titulo, cuerpo, ()=>{ no.removeEventListener('click', h); resolve(true); });
   });
 }
 
-function pintarSelectCategoriasInventario(){
-  const sel = document.getElementById('inv-categoria');
-  const cats = state.categoriasInventario.length ? state.categoriasInventario : [{Nombre:'General',Emoji:'📦'}];
-  sel.innerHTML = cats.map(c=>`<option value="${escapeHtml(c.Nombre)}">${c.Emoji||''} ${escapeHtml(c.Nombre)}</option>`).join('');
+/* ---- escritura: Gastos (objetos) + backend propio (meta) ---- */
+async function invUpdateGasto(item, campos){
+  return callGAS(state.conexiones.gastos, 'updateGasto', Object.assign({ rowIndex: item.rowIndex, _baseline: { concepto: item.Nombre } }, campos));
+}
+async function invGuardarMeta(key, cambios){
+  if(!state.gasUrlPropia) return;
+  const row = Object.assign({}, state.invMeta[key] || {}, cambios, { ID: key });
+  await asegurarBackendPropio('saveRow', { table:'INVENTARIO_META', row });
+  state.invMeta[key] = row;
+}
+async function invEnLotes(lista, fn, etiqueta){
+  const cola = lista.slice(); let hechos = 0; const fallos = [];
+  const trabajador = async ()=>{ while(cola.length){ const x = cola.shift(); try{ await fn(x); } catch(e){ fallos.push({x, e}); } hechos++; if(lista.length>3) toast(etiqueta+' '+hechos+'/'+lista.length+'…'); } };
+  await Promise.all([trabajador(), trabajador(), trabajador()]);
+  return fallos;
 }
 
-function pintarUbicacionesDatalist(){
-  const dl = document.getElementById('inv-ubicaciones-datalist');
-  const vistas = new Set();
-  state.inventario.forEach(i=>{ if(i.Ubicacion) vistas.add(i.Ubicacion); });
-  dl.innerHTML = Array.from(vistas).sort().map(u=>`<option value="${escapeHtml(u)}">`).join('');
+/* ---- usar / sacar / regresar un objeto ---- */
+async function invMarcarUso(item){
+  if(!state.gasUrlPropia){ toast('Falta configurar tu Web App propia (Configuración → Conexiones)'); return; }
+  try{ await invGuardarMeta(item.key, { UltimoUso: hoyISO() }); toast('✋ Anotado: lo usaste hoy'); renderInventario(); }
+  catch(e){ toast('Error: '+e.message); }
+}
+function invNotaSalida(notas, deDonde, motivo){
+  return (notas ? notas.replace(/\s+$/,'')+'\n' : '') + '🕊 ' + hoyISO() + ' — salió de "' + invRutaBonita(deDonde) + '": ' + (motivo || '(sin motivo)');
+}
+async function invSacarObjeto(item){
+  const motivo = await invPedirTexto('¿Por qué sacas "'+item.Nombre+'"?', 'No se borra: se va a "🕊 Ya no están" y el motivo queda en sus notas (para acordarte que lo tuviste y por qué ya no).', '', 'ej. lo regalé, se rompió, no lo usaba, lo vendí…');
+  if(motivo===null) return false;
+  try{
+    toast('Moviendo a "Ya no están"…');
+    await invUpdateGasto(item, { ubicacion: INV_SALIDA, notas: invNotaSalida(item.Caracteristicas, item.Ubicacion, motivo) });
+    await invGuardarMeta(item.key, { UbicacionAnterior: item.Ubicacion, FechaSalida: hoyISO(), MotivoSalida: motivo });
+    toast('🕊 Guardado en "Ya no están"');
+    closeModal('modal-inv');
+    await pintarInventario();
+    return true;
+  } catch(e){ toast('Error: '+e.message); return false; }
+}
+async function invRegresarObjeto(item){
+  const m = state.invMeta[item.key] || {};
+  const destino = invNormPath(m.UbicacionAnterior || '');
+  if(!(await invConfirmar('¿Regresar "'+item.Nombre+'"?', 'Vuelve a '+(destino?('📁 '+invRutaBonita(destino)):'"Sin carpeta"')+'. Su historial de salida se queda en las notas.'))) return;
+  try{
+    await invUpdateGasto(item, { ubicacion: destino, notas: (item.Caracteristicas ? item.Caracteristicas+'\n' : '') + '↩ ' + hoyISO() + ' — regresó' });
+    await invGuardarMeta(item.key, { FechaSalida:'', UltimoUso: hoyISO() });
+    toast('↩ Regresó al inventario');
+    closeModal('modal-inv');
+    await pintarInventario();
+  } catch(e){ toast('Error: '+e.message); }
+}
+
+/* ---- carpetas: crear / editar (nombre, descripción, foto+flecha) ---- */
+let invcFoto = null;   // {base64,mime,dataUrl} | {url} (foto de la carpeta de arriba) | {removida:true}
+let invcFlecha = null; // {x,y} en % de la foto
+function invcPintarFoto(url){
+  const box = document.getElementById('invc-foto-box');
+  if(!url){ box.classList.add('hidden'); document.getElementById('invc-foto-img').src=''; return; }
+  box.classList.remove('hidden');
+  document.getElementById('invc-foto-img').src = url;
+  const f = document.getElementById('invc-flecha');
+  if(invcFlecha){ f.classList.remove('hidden'); f.style.left = invcFlecha.x+'%'; f.style.top = invcFlecha.y+'%'; }
+  else f.classList.add('hidden');
+}
+function invcFotoPadreUrl(pathOPadre){
+  // Busca la foto más cercana hacia arriba (la carpeta de arriba, o la de
+  // arriba de esa...) — así "Cajón 2" puede reusar la foto de la Alacena y
+  // solo marcar con la flecha dónde queda.
+  let p = pathOPadre;
+  while(p){ const m = invMetaCarpeta(p); if(m && m.FotoURL) return m.FotoURL; p = p.split('/').slice(0,-1).join('/'); }
+  return '';
+}
+function invcActualizarBotonPadre(){
+  const original = document.getElementById('invc-path-original').value;
+  const padre = original ? original.split('/').slice(0,-1).join('/') : document.getElementById('invc-padre').value;
+  const url = invcFotoPadreUrl(padre);
+  document.getElementById('invc-btn-foto-padre').classList.toggle('hidden', !url);
+  document.getElementById('invc-btn-foto-padre').dataset.url = url;
+}
+function abrirModalCarpetaInv(path, padrePreset){
+  if(!state.gasUrlPropia){ toast('Falta configurar tu Web App propia en Configuración → Conexiones'); return; }
+  const editando = !!path;
+  const meta = editando ? (invMetaCarpeta(path) || {}) : {};
+  invcFoto = null;
+  invcFlecha = (meta.FlechaX!=='' && meta.FlechaX!=null && !isNaN(parseFloat(meta.FlechaX))) ? { x: parseFloat(meta.FlechaX), y: parseFloat(meta.FlechaY) } : null;
+  document.getElementById('modal-inv-carpeta-titulo').textContent = editando ? 'Editar carpeta' : 'Nueva carpeta';
+  document.getElementById('invc-path-original').value = path || '';
+  document.getElementById('invc-nombre').value = editando ? path.split('/').pop() : '';
+  document.getElementById('invc-desc').value = meta.Descripcion || '';
+  document.getElementById('invc-padre-box').classList.toggle('hidden', editando);
+  if(!editando){
+    const sel = document.getElementById('invc-padre');
+    sel.innerHTML = '<option value="">🏠 Nivel principal</option>' + invTodasLasCarpetas().map(p=>`<option value="${escapeHtml(p)}">📁 ${escapeHtml(invRutaBonita(p))}</option>`).join('');
+    sel.value = (padrePreset && padrePreset!==INV_SIN_CARPETA) ? padrePreset : '';
+  }
+  invcPintarFoto(meta.FotoURL || '');
+  invcActualizarBotonPadre();
+  openModal('modal-inv-carpeta');
+}
+document.getElementById('invc-padre').addEventListener('change', invcActualizarBotonPadre);
+document.getElementById('btn-inv-carpeta-nueva').addEventListener('click', ()=> abrirModalCarpetaInv(null, invRuta));
+document.getElementById('invc-desc-borrar').addEventListener('click', ()=>{ document.getElementById('invc-desc').value=''; toast('Descripción borrada — toca Guardar para confirmar'); });
+document.getElementById('invc-btn-foto').addEventListener('click', ()=>{ invCropDestino='carpeta'; document.getElementById('invc-foto-input').click(); });
+document.getElementById('invc-foto-input').addEventListener('change', function(){ const f=this.files[0]; this.value=''; if(f) invAbrirCrop(f, 'carpeta'); });
+document.getElementById('invc-btn-foto-padre').addEventListener('click', function(){
+  invcFoto = { url: this.dataset.url }; invcFlecha = null; invcPintarFoto(this.dataset.url);
+  toast('Ahora toca la foto donde está esta carpeta para poner la flecha');
+});
+document.getElementById('invc-foto-quitar').addEventListener('click', ()=>{ invcFoto = { removida:true }; invcFlecha = null; invcPintarFoto(''); });
+document.getElementById('invc-flecha-quitar').addEventListener('click', ()=>{ invcFlecha = null; invcPintarFoto(document.getElementById('invc-foto-img').src); });
+document.getElementById('invc-foto-wrap').addEventListener('click', function(e){
+  const r = document.getElementById('invc-foto-img').getBoundingClientRect();
+  if(!r.width || !r.height) return;
+  const x = Math.max(0, Math.min(100, (e.clientX - r.left) / r.width * 100));
+  const y = Math.max(0, Math.min(100, (e.clientY - r.top) / r.height * 100));
+  invcFlecha = { x: Math.round(x*10)/10, y: Math.round(y*10)/10 };
+  invcPintarFoto(document.getElementById('invc-foto-img').src);
+});
+document.getElementById('invc-guardar').addEventListener('click', async function(){
+  const original = document.getElementById('invc-path-original').value;
+  const nombre = invNormPath(document.getElementById('invc-nombre').value.replace(/\//g,'-'));
+  if(!nombre){ toast('Ponle un nombre'); return; }
+  const padre = original ? original.split('/').slice(0,-1).join('/') : document.getElementById('invc-padre').value;
+  const path = padre ? padre+'/'+nombre : nombre;
+  if(invBajo(path, INV_SALIDA)){ toast('"'+INV_SALIDA+'" es el apartado de lo que ya salió — usa otro nombre'); return; }
+  const existentes = invTodasLasCarpetas();
+  if(path!==original && existentes.includes(path)){ toast('Ya hay una carpeta "'+nombre+'" ahí — usa 📦 Mover si quieres juntarlas'); return; }
+  const btn = this;
+  setBtnState(btn, 'saving', {saving:'Guardando…'});
+  try{
+    const metaPrev = original ? (invMetaCarpeta(original) || {}) : {};
+    let fotoUrl = metaPrev.FotoURL || '';
+    if(invcFoto && invcFoto.removida) fotoUrl = '';
+    else if(invcFoto && invcFoto.url) fotoUrl = invcFoto.url;
+    else if(invcFoto && invcFoto.base64){
+      setBtnState(btn, 'saving', {saving:'Subiendo foto…'});
+      const subida = await asegurarBackendPropio('uploadImage', { imageBase64: invcFoto.base64, mimeType: invcFoto.mime, fileName:'carpeta-'+Date.now()+'.jpg' });
+      if(subida.ok) fotoUrl = subida.url; else throw new Error(subida.error||'no se pudo subir la foto');
+    }
+    if(original && path!==original){
+      setBtnState(btn, 'saving', {saving:'Renombrando…'});
+      await invReescribirCarpeta(original, path);
+    }
+    const meta = invMetaCarpeta(path);
+    const row = Object.assign({}, meta || {}, {
+      Path: path, Descripcion: document.getElementById('invc-desc').value.trim(), FotoURL: fotoUrl,
+      FlechaX: (fotoUrl && invcFlecha) ? invcFlecha.x : '', FlechaY: (fotoUrl && invcFlecha) ? invcFlecha.y : ''
+    });
+    const res = await asegurarBackendPropio('saveRow', { table:'CARPETAS_INVENTARIO', row });
+    if(meta) Object.assign(meta, res.row || row); else state.invCarpetas.push(Object.assign({}, res.row || row, { Path: path }));
+    setBtnState(btn, 'idle', {idle:'Guardar'});
+    closeModal('modal-inv-carpeta');
+    toast(original ? '✓ Carpeta guardada' : '✓ Carpeta creada');
+    invRuta = path; invModo = 'carpetas';
+    renderInventario();
+    if(original && path!==original) pintarInventario();
+  } catch(e){ setBtnState(btn, 'idle', {idle:'Guardar'}); toast('Error: '+e.message); }
+});
+
+// Reescribe el prefijo `viejo` → `nuevo` en todos los objetos y en las
+// fichas de carpeta (descripción/foto) de ese subárbol. nuevo===null
+// significa "eliminar la carpeta": su contenido sube un nivel.
+async function invReescribirCarpeta(viejo, nuevo){
+  const padre = viejo.split('/').slice(0,-1).join('/');
+  const mapear = (u)=>{
+    if(!invBajo(u, viejo)) return u;
+    const resto = u.slice(viejo.length).replace(/^\//,'');
+    if(nuevo===null) return invNormPath((padre?padre+'/':'') + resto);
+    return invNormPath(nuevo + (resto?'/'+resto:''));
+  };
+  const objetos = state.inventario.filter(i=>!invEsSalida(i) && invBajo(i.Ubicacion, viejo));
+  const fallos = await invEnLotes(objetos, async (i)=>{ const nu = mapear(i.Ubicacion); await invUpdateGasto(i, { ubicacion: nu }); i.Ubicacion = nu; }, 'Moviendo objetos');
+  // Fichas de carpeta
+  const fichas = state.invCarpetas.filter(c=>invBajo(c.Path, viejo));
+  for(const c of fichas){
+    const nu = (nuevo===null && c.Path===viejo) ? '' : mapear(c.Path);
+    const yaHay = nu && state.invCarpetas.find(o=>o!==c && o.Path===nu);
+    if(!nu || yaHay){
+      await asegurarBackendPropio('deleteRow', { table:'CARPETAS_INVENTARIO', id: c.ID });
+      state.invCarpetas = state.invCarpetas.filter(o=>o!==c);
+    } else {
+      const row = Object.assign({}, c, { Path: nu });
+      await asegurarBackendPropio('saveRow', { table:'CARPETAS_INVENTARIO', row });
+      c.Path = nu;
+    }
+  }
+  if(fallos.length) throw new Error(fallos.length+' objeto(s) no se pudieron mover ('+fallos[0].e.message+') — vuelve a intentarlo');
+}
+function invAbrirMoverCarpeta(path){
+  const nombre = path.split('/').pop();
+  const padreActual = path.split('/').slice(0,-1).join('/');
+  const destinos = [''].concat(invTodasLasCarpetas()).filter(c=> c!==padreActual && !invBajo(c, path));
+  document.getElementById('inv-elegir-titulo').textContent = 'Mover "'+nombre+'" a…';
+  document.getElementById('inv-elegir-sub').textContent = 'Todo lo que tiene adentro (objetos y subcarpetas, con sus fotos y descripciones) se mueve junto, sin perder nada.';
+  const cont = document.getElementById('inv-elegir-list');
+  cont.innerHTML = destinos.length ? destinos.map(d=>`<div class="row" data-dest="${escapeHtml(d)}"><div class="ic" style="background:var(--gastos);">${d?'📁':'🏠'}</div><div class="body"><div class="main">${d?escapeHtml(invRutaBonita(d)):'Nivel principal'}</div></div></div>`).join('') : '<div class="empty-row">No hay otra carpeta a dónde moverla</div>';
+  cont.querySelectorAll('[data-dest]').forEach(r=> r.addEventListener('click', async ()=>{
+    const destino = r.dataset.dest;
+    const nuevo = destino ? destino+'/'+nombre : nombre;
+    const choca = invTodasLasCarpetas().includes(nuevo);
+    closeModal('modal-inv-elegir');
+    if(!(await invConfirmar('¿Mover "'+nombre+'"?', 'Va a quedar en: '+invRutaBonita(nuevo)+'.'+(choca?' Ya existe una carpeta con ese nombre ahí — su contenido se va a juntar.':'')))) return;
+    try{
+      toast('Moviendo…');
+      await invReescribirCarpeta(path, nuevo);
+      invRuta = nuevo;
+      toast('✓ Carpeta movida');
+    } catch(e){ toast('Error: '+e.message); }
+    pintarInventario();
+  }));
+  openModal('modal-inv-elegir');
+}
+async function invEliminarCarpeta(path){
+  const nombre = path.split('/').pop();
+  const n = state.inventario.filter(i=>!invEsSalida(i) && invBajo(i.Ubicacion, path)).length;
+  const padre = path.split('/').slice(0,-1).join('/');
+  if(!(await invConfirmar('¿Eliminar la carpeta "'+nombre+'"?', n ? ('Sus '+n+' objeto(s) y subcarpetas NO se borran: suben a '+(padre?('"'+invRutaBonita(padre)+'"'):'el nivel principal')+'. Se pierde solo la descripción/foto de esta carpeta.') : 'Está vacía. Se borra su descripción/foto.'))) return;
+  try{
+    toast('Eliminando carpeta…');
+    await invReescribirCarpeta(path, null);
+    invRuta = padre;
+    toast('✓ Carpeta eliminada');
+  } catch(e){ toast('Error: '+e.message); }
+  pintarInventario();
+}
+
+/* ---- modal de objeto ---- */
+function pintarSelectCategoriasInventario(grupo, actual){
+  const sel = document.getElementById('inv-categoria');
+  let cats = state.invCategoriasTodas.filter(c=>c.Grupo===grupo);
+  if(!cats.length && grupo==='General') cats = [{Nombre:'General',Emoji:'📦'}];
+  const nombres = cats.map(c=>c.Nombre);
+  let html = '<option value="">— Sin categoría —</option>' + cats.map(c=>`<option value="${escapeHtml(c.Nombre)}">${c.Emoji||''} ${escapeHtml(c.Nombre)}</option>`).join('');
+  if(actual && !nombres.includes(actual)) html += `<option value="${escapeHtml(actual)}">${escapeHtml(actual)}</option>`;
+  sel.innerHTML = html;
+  sel.value = actual || (grupo==='General' && nombres[0]) || '';
+}
+function pintarSelectUbicacion(actual){
+  const sel = document.getElementById('inv-ubicacion');
+  const carpetas = invTodasLasCarpetas();
+  let html = '<option value="">— Sin carpeta —</option>' + carpetas.map(p=>{
+    const nivel = p.split('/').length - 1;
+    return `<option value="${escapeHtml(p)}">${'   '.repeat(nivel)}📁 ${escapeHtml(p.split('/').pop())}</option>`;
+  }).join('');
+  if(actual && !carpetas.includes(actual) && !invBajo(actual, INV_SALIDA)) html += `<option value="${escapeHtml(actual)}">📁 ${escapeHtml(invRutaBonita(actual))} (nueva)</option>`;
+  html += `<option value="${INV_SALIDA}">🕊 Ya no están (lo saqué)</option><option value="__nueva__">➕ Nueva carpeta…</option>`;
+  sel.innerHTML = html;
+  sel.value = invBajo(actual||'', INV_SALIDA) ? INV_SALIDA : (actual || '');
+  sel.dataset.prev = sel.value;
+}
+function invSeleccionarUbicacion(path){
+  const sel = document.getElementById('inv-ubicacion');
+  if(!Array.from(sel.options).some(o=>o.value===path)){
+    const opt = document.createElement('option'); opt.value = path; opt.textContent = '📁 '+invRutaBonita(path)+' (nueva)';
+    sel.insertBefore(opt, sel.querySelector(`option[value="${INV_SALIDA}"]`));
+  }
+  sel.value = path; sel.dataset.prev = path;
+}
+document.getElementById('inv-ubicacion').addEventListener('change', async function(){
+  if(this.value !== '__nueva__'){ this.dataset.prev = this.value; return; }
+  const prev = this.dataset.prev || '';
+  const base = (prev && prev!==INV_SALIDA) ? prev+'/' : '';
+  const txt = await invPedirTexto('Nueva carpeta', 'Escribe el nombre. Para que quede dentro de otra, usa "/" (ej. Alacena/Cajón 3). Ya te dejé escrita la carpeta donde estabas.', base, 'ej. Clóset recámara/Caja azul');
+  const path = invNormPath(txt||'');
+  if(!path || invBajo(path, INV_SALIDA)){ this.value = prev; return; }
+  invSeleccionarUbicacion(path);
+});
+function invPintarGrupoTxt(item){
+  const t = document.getElementById('inv-grupo-txt');
+  const sel = document.getElementById('inv-grupo');
+  if(!item){ sel.classList.remove('hidden'); t.textContent = ''; return; }
+  sel.classList.add('hidden');
+  const txt = { Alacena:'🥫 Alacena — viene de tus compras en Gastos', Ropa:'👕 Ropa — viene del Closet (foto, precio y detalles se editan allá; aquí su carpeta y cantidad)', General:'📦 General' };
+  t.textContent = txt[item.grupo] || item.grupo;
+}
+document.getElementById('inv-grupo').addEventListener('change', function(){ pintarSelectCategoriasInventario(this.value, ''); });
+
+document.getElementById('btn-inv-nuevo').addEventListener('click', ()=> abrirModalInventario(null, { ubicacion: (invRuta && invRuta!==INV_SIN_CARPETA) ? invRuta : '' }));
+let invFotoPendiente = null; // {base64, mime, dataUrl} — foto ya recortada/lista para subir al guardar
+let invEditando = null;
+function abrirModalInventario(rowIndex, preset){
+  preset = preset || {};
+  invFotoPendiente = preset.foto || null;
+  const item = rowIndex!=null ? invItemPorRow(rowIndex) : null;
+  invEditando = item;
+  const grupo = item ? item.grupo : (preset.grupo || (invGrupo==='Alacena' ? 'Alacena' : 'General'));
+  document.getElementById('modal-inv-titulo').textContent = item ? 'Editar objeto' : 'Nuevo objeto';
+  document.getElementById('inv-id').value = item ? item.rowIndex : '';
+  document.getElementById('inv-nombre').value = item ? item.Nombre : (preset.nombre || '');
+  document.getElementById('inv-grupo').value = grupo;
+  invPintarGrupoTxt(item);
+  pintarSelectCategoriasInventario(grupo, item ? item.Categoria : '');
+  document.getElementById('inv-caracteristicas').value = item ? item.Caracteristicas : '';
+  document.getElementById('inv-cantidad').value = item ? (item.Cantidad || '') : 1;
+  document.getElementById('inv-precio').value = item ? (item.Precio || '') : '';
+  document.getElementById('inv-precio-moneda').value = item ? (item.PrecioMoneda || 'MXN') : 'MXN';
+  document.getElementById('inv-codigo').value = item ? (item.Codigo || '') : '';
+  document.getElementById('inv-tienda').value = item ? (item.Tienda || '') : '';
+  pintarSelectUbicacion(item ? item.Ubicacion : invNormPath(preset.ubicacion || ''));
+  pintarTiendasDatalist();
+  const prev = document.getElementById('inv-foto-preview');
+  const fotoSrc = invFotoPendiente ? invFotoPendiente.dataUrl : (item && item.FotoURL);
+  if(fotoSrc){ prev.classList.remove('hidden'); document.getElementById('inv-foto-img').src = fotoSrc; }
+  else { prev.classList.add('hidden'); document.getElementById('inv-foto-img').src = ''; }
+  // Último uso / salida
+  const usoBox = document.getElementById('inv-uso-box');
+  usoBox.classList.toggle('hidden', !item);
+  document.getElementById('inv-btn-borrar').classList.toggle('hidden', !item);
+  if(item){
+    const m = state.invMeta[item.key] || {};
+    const salida = invEsSalida(item);
+    const f = invUltimoUso(item);
+    document.getElementById('inv-uso-txt').textContent = salida
+      ? ('🕊 Ya no está' + (m.FechaSalida?(' desde '+m.FechaSalida):'') + (m.MotivoSalida?(' — '+m.MotivoSalida):''))
+      : (m.UltimoUso ? ('✋ Último uso: '+m.UltimoUso+' ('+invHaceCuanto(m.UltimoUso)+')') : ('Sin uso registrado' + (f?(' — está aquí desde '+f+' ('+invHaceCuanto(f)+')'):'')));
+    document.getElementById('inv-btn-lo-use').classList.toggle('hidden', salida);
+    document.getElementById('inv-btn-salida').classList.toggle('hidden', salida);
+    document.getElementById('inv-btn-regresar').classList.toggle('hidden', !salida);
+  }
+  openModal('modal-inv');
+}
+function pintarTiendasDatalist(){
   const dlT = document.getElementById('inv-tiendas-datalist');
   const tiendas = new Set();
   state.inventario.forEach(i=>{ if(i.Tienda) tiendas.add(i.Tienda); });
   dlT.innerHTML = Array.from(tiendas).sort().map(t=>`<option value="${escapeHtml(t)}">`).join('');
-}
-
-document.getElementById('btn-inv-nuevo').addEventListener('click', ()=> abrirModalInventario(null));
-let invFotoPendiente = null; // {base64, mime, dataUrl} — foto ya recortada/lista para subir al guardar
-function abrirModalInventario(idv){
-  pintarSelectCategoriasInventario();
-  pintarUbicacionesDatalist();
-  invFotoPendiente = null;
-  const item = idv ? state.inventario.find(x=>x.ID===idv) : null;
-  document.getElementById('modal-inv-titulo').textContent = item ? 'Editar objeto' : 'Nuevo objeto';
-  document.getElementById('inv-id').value = item ? item.ID : '';
-  document.getElementById('inv-nombre').value = item ? item.Nombre : '';
-  document.getElementById('inv-categoria').value = item ? item.Categoria : (state.categoriasInventario[0] ? state.categoriasInventario[0].Nombre : 'General');
-  document.getElementById('inv-caracteristicas').value = item ? item.Caracteristicas : '';
-  document.getElementById('inv-cantidad').value = item ? (item.Cantidad||1) : 1;
-  document.getElementById('inv-precio').value = item ? (item.Precio||'') : '';
-  document.getElementById('inv-precio-moneda').value = item ? (item.PrecioMoneda||'MXN') : 'MXN';
-  document.getElementById('inv-codigo').value = item ? (item.Codigo||'') : '';
-  document.getElementById('inv-tienda').value = item ? (item.Tienda||'') : '';
-  document.getElementById('inv-ubicacion').value = item ? item.Ubicacion : '';
-  const prev = document.getElementById('inv-foto-preview');
-  if(item && item.FotoURL){ prev.classList.remove('hidden'); document.getElementById('inv-foto-img').src = item.FotoURL; }
-  else{ prev.classList.add('hidden'); document.getElementById('inv-foto-img').src=''; }
-  openModal('modal-inv');
 }
 document.getElementById('inv-cancelar').addEventListener('click', ()=> closeModal('modal-inv'));
 document.getElementById('inv-foto-quitar').addEventListener('click', ()=>{
@@ -3018,54 +3651,187 @@ document.getElementById('inv-foto-quitar').addEventListener('click', ()=>{
   document.getElementById('inv-foto-preview').classList.add('hidden');
   document.getElementById('inv-foto-img').src='';
 });
+document.getElementById('inv-btn-lo-use').addEventListener('click', async ()=>{ if(invEditando){ await invMarcarUso(invEditando); abrirModalInventario(invEditando.rowIndex); } });
+document.getElementById('inv-btn-salida').addEventListener('click', ()=>{ if(invEditando) invSacarObjeto(invEditando); });
+document.getElementById('inv-btn-regresar').addEventListener('click', ()=>{ if(invEditando) invRegresarObjeto(invEditando); });
+document.getElementById('inv-btn-borrar').addEventListener('click', ()=>{
+  const item = invEditando; if(!item) return;
+  pedirConfirmacion('¿Borrar "'+item.Nombre+'"?', 'Solo si fue un error. Si lo regalaste/tiraste/etc. mejor usa 🕊 "Ya no lo tengo" para que quede en el historial. Lo borrado va a la papelera de Gastos (Eliminados), se puede recuperar desde ahí.', async ()=>{
+    try{
+      await callGAS(state.conexiones.gastos, 'deleteGasto', { rowIndex: item.rowIndex, soloFila:true, eliminadoPor: (state.usuarios.find(u=>u.id===state.usuarioActivo)||{}).nombre||'' });
+      toast('Borrado'); closeModal('modal-inv'); pintarInventario();
+    } catch(e){ toast('Error: '+e.message); }
+  });
+});
 document.getElementById('inv-guardar').addEventListener('click', async function(){
   const nombre = document.getElementById('inv-nombre').value.trim();
   if(!nombre){ toast('Ponle un nombre'); return; }
   if(!state.conexiones.gastos || !state.gastosSesion){ toast('Conecta Gastos en Configuración → Conexiones'); return; }
+  const existente = invEditando;
+  let ubicacion = document.getElementById('inv-ubicacion').value;
+  if(ubicacion==='__nueva__') ubicacion = '';
+  let notas = document.getElementById('inv-caracteristicas').value.trim();
+  // Moverlo a "Ya no están" desde la lista desplegable también pregunta por qué.
+  let motivoSalida = null;
+  const yaEraSalida = existente && invEsSalida(existente);
+  if(ubicacion===INV_SALIDA && !yaEraSalida){
+    motivoSalida = await invPedirTexto('¿Por qué lo sacas?', 'Se guarda en sus notas — no se borra, queda en "🕊 Ya no están".', '', 'ej. lo regalé, se rompió, no lo usaba…');
+    if(motivoSalida===null) return;
+    notas = invNotaSalida(notas, existente ? existente.Ubicacion : '', motivoSalida);
+  }
+  if(yaEraSalida && ubicacion===INV_SALIDA) ubicacion = existente.Ubicacion; // conserva la subruta exacta
   const btn = this;
   setBtnState(btn, 'saving', {saving:'Guardando…'});
-  const idExistente = document.getElementById('inv-id').value;
-  const existente = idExistente ? state.inventario.find(x=>x.ID===idExistente) : null;
-  const externoId = idExistente || uid();
   let fotoUrl = existente ? (existente.FotoURL||'') : '';
   try{
-    if(invFotoPendiente && invFotoPendiente.removida) fotoUrl = '';
+    let fotoCambio = false;
+    if(invFotoPendiente && invFotoPendiente.removida){ fotoUrl = ''; fotoCambio = true; }
     else if(invFotoPendiente && invFotoPendiente.base64){
       setBtnState(btn, 'saving', {saving:'Subiendo foto…'});
       const subida = await asegurarBackendPropio('uploadImage', { imageBase64:invFotoPendiente.base64, mimeType:invFotoPendiente.mime, fileName:'inv-'+Date.now()+'.jpg' });
-      if(subida.ok) fotoUrl = subida.url;
+      if(subida.ok){ fotoUrl = subida.url; fotoCambio = true; }
       setBtnState(btn, 'saving', {saving:'Guardando…'});
     }
-    await callGAS(state.conexiones.gastos, 'syncProductoExterno', {
-      sesion: state.gastosSesion, externoId, externoOrigen:'General', grupo:'General',
+    const cantidadTxt = document.getElementById('inv-cantidad').value.trim();
+    const comun = {
       concepto: nombre,
       categoria: document.getElementById('inv-categoria').value,
-      notas: document.getElementById('inv-caracteristicas').value.trim(),
-      cantidad: parseInt(document.getElementById('inv-cantidad').value)||1,
+      notas,
       precioInd: parseFloat(document.getElementById('inv-precio').value)||'',
-      precioMoneda: document.getElementById('inv-precio-moneda').value,
       codigo: document.getElementById('inv-codigo').value.trim(),
       tienda: document.getElementById('inv-tienda').value.trim(),
-      ubicacion: document.getElementById('inv-ubicacion').value.trim(),
-      fotoUrl
-    });
+      ubicacion
+    };
+    let key;
+    const esGeneralPropio = existente && existente.grupo==='General' && existente.externoId && (existente.externoOrigen||'General')==='General';
+    if(!existente || esGeneralPropio){
+      // Objetos creados aquí: se reescriben completos por su externoId (como antes).
+      const externoId = existente ? existente.externoId : uid();
+      key = 'x:'+externoId;
+      await callGAS(state.conexiones.gastos, 'syncProductoExterno', Object.assign({}, comun, {
+        sesion: state.gastosSesion, externoId, externoOrigen:'General',
+        grupo: existente ? 'General' : document.getElementById('inv-grupo').value,
+        cantidad: cantidadTxt==='' ? '' : (parseFloat(cantidadTxt)||0),
+        precioMoneda: document.getElementById('inv-precio-moneda').value,
+        fotoUrl
+      }));
+    } else {
+      // Alacena (de compras) / Ropa (del Closet): solo se tocan los campos de
+      // esa fila, nunca se reescribe entera (no se pierden piezas, caducidad,
+      // vínculo a la compra, etc.).
+      const campos = Object.assign({}, comun);
+      campos[existente.campoCantidad] = cantidadTxt;
+      if(fotoCambio) campos.fotoProducto = fotoUrl;
+      await invUpdateGasto(existente, campos);
+      key = invKey({ externoId: existente.externoId, fecha: existente.Fecha, concepto: nombre });
+      // Si cambió el nombre y la llave dependía de él, se muda su "último uso".
+      if(key !== existente.key && state.invMeta[existente.key] && state.gasUrlPropia){
+        const viejo = state.invMeta[existente.key];
+        await invGuardarMeta(key, Object.assign({}, viejo));
+        await asegurarBackendPropio('deleteRow', { table:'INVENTARIO_META', id: existente.key });
+        delete state.invMeta[existente.key];
+      }
+    }
+    if(motivoSalida!==null) await invGuardarMeta(key, { UbicacionAnterior: existente ? existente.Ubicacion : '', FechaSalida: hoyISO(), MotivoSalida: motivoSalida });
     setBtnState(btn, 'saved', {saved:'Guardado'});
-    toast('Objeto guardado');
+    toast(motivoSalida!==null ? '🕊 Guardado en "Ya no están"' : 'Objeto guardado');
     setTimeout(()=>{ closeModal('modal-inv'); setBtnState(btn,'idle',{idle:'Guardar'}); }, 500);
     pintarInventario();
   } catch(e){
     setBtnState(btn, 'idle', {idle:'Guardar'});
-    toast('Error: ' + e.message);
+    toast('Error: ' + (e.message||e));
   }
+});
+
+/* ---- ✨ la IA sugiere carpeta (por nombre y/o foto). Nunca archiva sola:
+   siempre pregunta antes de aplicar. ---- */
+function invContextoCarpetas(){
+  return invTodasLasCarpetas().map(path=>{
+    const m = invMetaCarpeta(path);
+    const ejemplos = state.inventario.filter(i=>i.Ubicacion===path && !invEsSalida(i)).slice(0,8).map(i=>i.Nombre);
+    return { path, descripcion: (m && m.Descripcion) || '', ejemplos };
+  });
+}
+async function invPedirSugerencia(nombre, foto){
+  if(!state.gasUrlPropia){ toast('Falta configurar tu Web App propia en Configuración → Conexiones'); return null; }
+  const payload = { nombre, carpetas: invContextoCarpetas() };
+  if(foto && foto.base64){ payload.imagenBase64 = foto.base64; payload.mimeType = foto.mime || 'image/jpeg'; }
+  let res = await llamarBackendPropioSinThrow('iaSugerirCarpetaInv', payload);
+  if(!res.ok){
+    if(!nombre){ toast('Gemini no respondió: '+(res.error||'')+' — escribe el nombre para poder intentar con Claude'); return null; }
+    if(!(await invConfirmar('Gemini no respondió', 'Puedo intentar con Claude (tiene costo, y solo ve el nombre, no la foto). ¿Intento?'))) return null;
+    res = await llamarBackendPropioSinThrow('iaSugerirCarpetaInvClaude', payload);
+    if(!res.ok){ toast('Claude también falló: '+(res.error||'')); return null; }
+  }
+  const d = res.data || {};
+  d.carpeta = invNormPath(d.carpeta || '');
+  if(!d.carpeta){ toast('La IA no encontró una carpeta clara'); return null; }
+  d.nueva = !invTodasLasCarpetas().includes(d.carpeta);
+  return d;
+}
+document.getElementById('inv-btn-sugerir').addEventListener('click', async function(){
+  const nombre = document.getElementById('inv-nombre').value.trim();
+  const foto = (invFotoPendiente && invFotoPendiente.base64) ? invFotoPendiente : null;
+  if(!nombre && !foto){ toast('Escribe el nombre o ponle foto primero'); return; }
+  const btn = this; btn.disabled = true; btn.textContent = '…';
+  let d = null;
+  try{ d = await invPedirSugerencia(nombre, foto); } catch(e){ toast('Error: '+e.message); }
+  btn.disabled = false; btn.textContent = '✨';
+  if(!d) return;
+  pedirConfirmacion('¿Guardarlo aquí?', '"'+(nombre||d.nombre||'')+'" → 📁 '+invRutaBonita(d.carpeta)+(d.nueva?' (carpeta nueva)':'')+(d.motivo?('\n\n'+d.motivo):''), ()=>{
+    invSeleccionarUbicacion(d.carpeta);
+    if(!nombre && d.nombre) document.getElementById('inv-nombre').value = d.nombre;
+    toast('✓ Carpeta sugerida puesta — revisa y toca Guardar');
+  });
+});
+
+let inviaFoto = null;
+document.getElementById('btn-inv-ia').addEventListener('click', ()=>{
+  inviaFoto = null;
+  document.getElementById('invia-nombre').value = '';
+  document.getElementById('invia-foto-preview').classList.add('hidden');
+  document.getElementById('invia-resultado').classList.add('hidden');
+  openModal('modal-inv-ia');
+});
+document.getElementById('invia-btn-foto').addEventListener('click', ()=> document.getElementById('invia-foto-input').click());
+document.getElementById('invia-foto-input').addEventListener('change', function(){ const f=this.files[0]; this.value=''; if(f) invAbrirCrop(f, 'ia'); });
+document.getElementById('invia-foto-quitar').addEventListener('click', ()=>{ inviaFoto = null; document.getElementById('invia-foto-preview').classList.add('hidden'); });
+document.getElementById('invia-sugerir').addEventListener('click', async function(){
+  const nombre = document.getElementById('invia-nombre').value.trim();
+  if(!nombre && !inviaFoto){ toast('Escribe qué es o ponle una foto'); return; }
+  const btn = this; setBtnState(btn, 'saving', {saving:'Pensando…'});
+  const out = document.getElementById('invia-resultado');
+  let d = null;
+  try{ d = await invPedirSugerencia(nombre, inviaFoto); } catch(e){ toast('Error: '+e.message); }
+  setBtnState(btn, 'idle', {idle:'✨ Sugerir'});
+  if(!d) return;
+  const nom = nombre || d.nombre || '';
+  out.classList.remove('hidden');
+  out.innerHTML = `<div class="t-sub">Te sugiero guardar <b>${escapeHtml(nom)}</b> en:</div>
+    <div style="font-size:17px; font-weight:600; margin:6px 0;">📁 ${escapeHtml(invRutaBonita(d.carpeta))}${d.nueva?' <span class="t-foot">(carpeta nueva)</span>':''}</div>
+    ${d.motivo?`<div class="t-foot">${escapeHtml(d.motivo)}</div>`:''}
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+      <button class="btn btn-primary btn-sm" id="invia-crear">+ Agregarlo ahí</button>
+      ${d.nueva?'':'<button class="btn btn-secondary btn-sm" id="invia-ir">📁 Ver esa carpeta</button>'}
+    </div>`;
+  document.getElementById('invia-crear').addEventListener('click', ()=>{
+    closeModal('modal-inv-ia');
+    abrirModalInventario(null, { nombre: nom, ubicacion: d.carpeta, foto: inviaFoto });
+    toast('Revisa los datos y toca Guardar');
+  });
+  const ir = document.getElementById('invia-ir');
+  if(ir) ir.addEventListener('click', ()=>{ closeModal('modal-inv-ia'); invBusqueda=''; document.getElementById('inv-buscar').value=''; invModo='carpetas'; invRuta = d.carpeta; renderInventario(); });
 });
 
 /* ---- Foto: elegir (cámara o galería) → recortar en el momento (regla:
    sin capture=environment para no saltar directo a la cámara; el recorte
    se ofrece de inmediato al elegir la foto, no como paso aparte) ---- */
 let invCropper = null;
-document.getElementById('inv-btn-foto').addEventListener('click', ()=> document.getElementById('inv-foto-input').click());
-document.getElementById('inv-foto-input').addEventListener('change', function(){
-  const file = this.files[0]; if(!file) return;
+// El mismo recorte sirve para 3 destinos: la foto del objeto, la foto de una
+// carpeta (para luego marcarle la flecha) y la foto de "✨ ¿Dónde lo guardo?".
+let invCropDestino = 'objeto';
+function invAbrirCrop(file, destino){
+  invCropDestino = destino || 'objeto';
   const reader = new FileReader();
   reader.onload = function(){
     const img = new Image();
@@ -3076,7 +3842,11 @@ document.getElementById('inv-foto-input').addEventListener('change', function(){
     img.src = reader.result; // se dibuja desde <img> ya cargado (onload), no desde una Image() recién creada
   };
   reader.readAsDataURL(file);
-  this.value = '';
+}
+document.getElementById('inv-btn-foto').addEventListener('click', ()=> document.getElementById('inv-foto-input').click());
+document.getElementById('inv-foto-input').addEventListener('change', function(){
+  const file = this.files[0]; this.value = ''; if(!file) return;
+  invAbrirCrop(file, 'objeto');
 });
 function openInvCrop(){
   document.getElementById('inv-crop-overlay').classList.add('on');
@@ -3088,11 +3858,26 @@ function closeInvCrop(){
   if(invCropper){ invCropper.destroy(); invCropper=null; }
 }
 function usarFotoInventario(dataUrl){
-  invFotoPendiente = { base64: dataUrl.split(',')[1], mime:'image/jpeg' };
+  // "Usar foto completa" pasa el dataURL original (puede ser PNG/HEIC→
+  // lo que sea que leyó el navegador) — se respeta su tipo real.
+  const mime = (dataUrl.match(/^data:([^;]+);/)||[])[1] || 'image/jpeg';
+  const foto = { base64: dataUrl.split(',')[1], mime, dataUrl };
+  closeInvCrop();
+  if(invCropDestino==='carpeta'){
+    invcFoto = foto; invcFlecha = null; invcPintarFoto(dataUrl);
+    toast('Ahora toca la foto para poner la flecha (opcional)');
+    return;
+  }
+  if(invCropDestino==='ia'){
+    inviaFoto = foto;
+    document.getElementById('invia-foto-preview').classList.remove('hidden');
+    document.getElementById('invia-foto-img').src = dataUrl;
+    return;
+  }
+  invFotoPendiente = foto;
   const prev = document.getElementById('inv-foto-preview');
   prev.classList.remove('hidden');
   document.getElementById('inv-foto-img').src = dataUrl;
-  closeInvCrop();
 }
 document.getElementById('inv-crop-cerrar').addEventListener('click', closeInvCrop);
 document.getElementById('inv-crop-descartar').addEventListener('click', closeInvCrop);
@@ -3804,7 +4589,11 @@ async function confirmarSugerenciaIA(msgIdx, sugIdx){
       if(!state.conexiones.comidas){ marcarError('Conecta Comidas en Configuración'); return; }
       await callGAS(state.conexiones.comidas, 'saveRow', { table:'LISTA_COMPRAS', row:{ Nombre:c.Nombre||'', Categoria:c.Categoria||'', Cantidad:c.Cantidad||'', Comprado:false, Papelera:false } });
     } else if(s.modulo==='inventario_general'){
-      await asegurarBackendPropio('saveRow', { table:'INVENTARIO_GENERAL', row:{ Nombre:c.Nombre||'', Categoria:c.Categoria||'General', Caracteristicas:c.Caracteristicas||'', Precio:c.Precio||'', Cantidad:1, Papelera:false } });
+      // El Inventario vive en Gastos (Grupo='General') desde hace tiempo — la
+      // tabla vieja INVENTARIO_GENERAL ya no la lee nadie, por eso lo que se
+      // guardaba desde aquí "desaparecía".
+      if(!state.conexiones.gastos || !state.gastosSesion){ marcarError('Conecta Gastos en Configuración'); return; }
+      await callGAS(state.conexiones.gastos, 'syncProductoExterno', { sesion: state.gastosSesion, externoId: uid(), externoOrigen:'General', grupo:'General', concepto:c.Nombre||'', categoria:c.Categoria||'General', notas:c.Caracteristicas||'', precioInd:c.Precio||'', cantidad:1 });
     }
     // A partir de aquí ya se cumplió lo que pediste (el evento/nota/etc. ya
     // se guardó de verdad) — lo único que falta es guardar el HISTORIAL del
